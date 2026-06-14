@@ -24,7 +24,8 @@
       "items": {
         "oneOf": [
           { "$ref": "#/$defs/pointCloudLayer" },
-          { "$ref": "#/$defs/surfaceGridLayer" }
+          { "$ref": "#/$defs/surfaceGridLayer" },
+          { "$ref": "#/$defs/absAnnotationLayer" }
         ]
       }
     },
@@ -131,6 +132,53 @@
               "minItems": 2,
               "maxItems": 2
             }
+          }
+        }
+      }
+    },
+    "absAnnotationLayer": {
+      "type": "object",
+      "required": ["id", "type", "name", "visible", "space", "data", "route", "label", "style"],
+      "properties": {
+        "type": { "const": "abs_annotation" },
+        "space": {
+          "type": "object",
+          "required": ["type", "units", "occlusion"],
+          "properties": {
+            "type": { "const": "anchored_billboard" },
+            "units": { "const": "px" },
+            "depthMode": { "const": "anchor-depth" },
+            "occlusion": { "enum": ["depth-test", "none"] }
+          }
+        },
+        "data": {
+          "type": "object",
+          "required": ["encoding", "anchors"],
+          "properties": {
+            "encoding": { "const": "json-abs" },
+            "anchors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "position", "route", "label"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "position": { "$ref": "#/$defs/vec3" },
+                  "route": { "type": "array" },
+                  "label": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "route": { "type": "array" },
+        "label": { "type": "object" },
+        "style": {
+          "type": "object",
+          "properties": {
+            "point": { "type": "object" },
+            "line": { "type": "object" },
+            "text": { "type": "object" }
           }
         }
       }

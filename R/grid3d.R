@@ -94,7 +94,9 @@ compile_scene3d_table <- function(table) {
 
 grid_3d <- function(visible = TRUE, planes = c("xy"),
                     domain = c("full", "positive", "negative", "limits"),
-                    breaks = NULL, minor_breaks = NULL) {
+                    breaks = NULL, minor_breaks = NULL,
+                    axis_length_fraction = 1,
+                    axis_arrows = FALSE) {
   domain <- match.arg(domain)
   allowed_planes <- c("xy", "xz", "yz")
   if (!is.logical(visible) || length(visible) != 1L || is.na(visible)) {
@@ -109,13 +111,22 @@ grid_3d <- function(visible = TRUE, planes = c("xy"),
   if (!is.null(minor_breaks) && !is.list(minor_breaks)) {
     stop("minor_breaks must be NULL or a list.", call. = FALSE)
   }
+  if (!is.numeric(axis_length_fraction) || length(axis_length_fraction) != 1L ||
+      !is.finite(axis_length_fraction) || axis_length_fraction <= 0 || axis_length_fraction > 1) {
+    stop("axis_length_fraction must be a numeric scalar in (0, 1].", call. = FALSE)
+  }
+  if (!is.logical(axis_arrows) || length(axis_arrows) != 1L || is.na(axis_arrows)) {
+    stop("axis_arrows must be TRUE or FALSE.", call. = FALSE)
+  }
 
   out <- list(
     visible = visible,
     planes = unique(planes),
     domain = domain,
     breaks = breaks,
-    minor_breaks = minor_breaks
+    minor_breaks = minor_breaks,
+    axis_length_fraction = axis_length_fraction,
+    axis_arrows = axis_arrows
   )
   class(out) <- c("ggplot3scene_grid3d", "list")
   out

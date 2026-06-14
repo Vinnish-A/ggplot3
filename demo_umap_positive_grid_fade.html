@@ -59,6 +59,29 @@
       min-width: 0;
       min-height: 0;
     }
+    #abs-label-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 1;
+    }
+    .abs-label {
+      position: absolute;
+      left: 0;
+      top: 0;
+      transform: translate3d(0, 0, 0) translateY(-50%);
+      will-change: transform;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.94);
+      color: #111827;
+      font-size: 12px;
+      line-height: 1.2;
+      padding: 4px 6px;
+      white-space: nowrap;
+      box-shadow: 0 1px 4px rgba(17, 24, 39, 0.08);
+    }
     canvas {
       display: block;
       width: 100%;
@@ -94,13 +117,14 @@
     </div>
     <div id="viewport">
       <div id="fallback">This prototype loads three.js from a CDN. The Scene3D data is embedded in this file, but first render requires network access unless a local vendor bundle is added later.</div>
+      <div id="abs-label-layer"></div>
     </div>
   </div>
 
   <script id="scene3d-data" type="application/json">
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614191449",
+  "sceneId": "scene-20260614203119",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -203,7 +227,9 @@
         "x": [-6, -4, -2, 0, 2, 4, 6],
         "y": [-4, -2, 0, 2, 4],
         "z": [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2]
-      }
+      },
+      "axisLengthFraction": 1,
+      "axisArrows": false
     }
   },
   "lights": {
@@ -269,6 +295,7 @@
     const viewport = document.getElementById("viewport");
     const status = document.getElementById("status");
     const fallback = document.getElementById("fallback");
+    const absLabelLayer = document.getElementById("abs-label-layer");
 
     THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -493,17 +520,22 @@
 
     function buildAxisLines(axesSpec, coordinateSystem, theme) {
       const positions = [];
-      const domain = coordinateSystem?.domain || {};
+      const gridSpec = axesSpec?.grid || {};
+      const domain = gridSpec.domainMode === "positive" || gridSpec.domainMode === "negative"
+        ? (gridSpec.domain || coordinateSystem?.domain || {})
+        : (coordinateSystem?.domain || {});
       const origin = coordinateSystem?.origin || [0, 0, 0];
+      const axisLengthFraction = THREE.MathUtils.clamp(Number(gridSpec.axisLengthFraction ?? 1), 0.01, 1);
+      const axisArrows = gridSpec.axisArrows === true;
 
       if (axesSpec?.x?.visible !== false) {
-        pushLine(positions, [domain.x?.[0] ?? -1, origin[1], origin[2]], [domain.x?.[1] ?? 1, origin[1], origin[2]]);
+        addAxisWithArrow(positions, "x", domain.x || [-1, 1], origin, axisLengthFraction, axisArrows);
       }
       if (axesSpec?.y?.visible !== false) {
-        pushLine(positions, [origin[0], domain.y?.[0] ?? -1, origin[2]], [origin[0], domain.y?.[1] ?? 1, origin[2]]);
+        addAxisWithArrow(positions, "y", domain.y || [-1, 1], origin, axisLengthFraction, axisArrows);
       }
       if (axesSpec?.z?.visible !== false) {
-        pushLine(positions, [origin[0], origin[1], domain.z?.[0] ?? -1], [origin[0], origin[1], domain.z?.[1] ?? 1]);
+        addAxisWithArrow(positions, "z", domain.z || [-1, 1], origin, axisLengthFraction, axisArrows);
       }
 
       const geometry = new THREE.BufferGeometry();
@@ -512,6 +544,34 @@
         color: new THREE.Color(theme?.axis?.line || "#4B5563")
       });
       return new THREE.LineSegments(geometry, material);
+    }
+
+    function addAxisWithArrow(positions, axis, domainRange, origin, fraction, arrows) {
+      const idx = axisIndex(axis);
+      const startValue = Number(domainRange[0]);
+      const rawEndValue = Number(domainRange[1]);
+      const endValue = startValue + (rawEndValue - startValue) * fraction;
+      const start = [origin[0], origin[1], origin[2]];
+      const end = [origin[0], origin[1], origin[2]];
+      start[idx] = startValue;
+      end[idx] = endValue;
+      pushLine(positions, start, end);
+
+      if (!arrows) return;
+      const length = Math.abs(endValue - startValue);
+      if (!Number.isFinite(length) || length <= 0) return;
+      const sign = Math.sign(endValue - startValue) || 1;
+      const arrowLength = Math.min(length * 0.16, Math.max(length * 0.06, 0.12));
+      const spread = arrowLength * 0.55;
+      const sideAxes = ["x", "y", "z"].filter((candidate) => candidate !== axis);
+
+      for (const sideAxis of sideAxes) {
+        const sideIdx = axisIndex(sideAxis);
+        const wing = [end[0], end[1], end[2]];
+        wing[idx] = endValue - sign * arrowLength;
+        wing[sideIdx] += spread;
+        pushLine(positions, end, wing);
+      }
     }
 
     function addPlaneLines(positions, axisA, axisB, constantAxis, domain, breaks, origin) {
@@ -565,8 +625,220 @@
     if (gridLines) scene.add(gridLines);
     scene.add(buildAxisLines(sceneData.axes, sceneData.coordinateSystem, sceneData.theme));
 
+    function buildAbsAnnotations(sceneData, camera, renderer) {
+      const group = new THREE.Group();
+      group.name = "abs-annotations";
+      const annotations = [];
+      const absLayers = (sceneData.layers || []).filter((layer) => layer.visible !== false && layer.type === "abs_annotation");
+
+      for (const layer of absLayers) {
+        const style = layer.style || {};
+        const lineStyle = style.line || {};
+        const pointStyle = style.point || {};
+        const textStyle = style.text || {};
+        const lineMaterial = new THREE.LineBasicMaterial({
+          color: new THREE.Color(lineStyle.color || "#111827"),
+          transparent: (lineStyle.opacity ?? 1) < 1,
+          opacity: lineStyle.opacity ?? 1,
+          linewidth: lineStyle.width || 2,
+          depthTest: lineStyle.depthTest !== false,
+          depthWrite: false
+        });
+        const pointMaterial = new THREE.PointsMaterial({
+          color: new THREE.Color(pointStyle.color || "#111827"),
+          size: pointStyle.size || 5,
+          sizeAttenuation: false,
+          depthTest: lineStyle.depthTest !== false,
+          depthWrite: true
+        });
+
+        for (const anchor of layer.data?.anchors || []) {
+          const route = anchor.route || layer.route || [];
+          const maxSegments = Math.max(1, route.length);
+          const linePositions = new Float32Array(maxSegments * 2 * 3);
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.BufferAttribute(linePositions, 3));
+          geometry.setDrawRange(0, 2);
+          const line = new THREE.Line(geometry, lineMaterial.clone());
+          group.add(line);
+
+          let point = null;
+          if (pointStyle.visible !== false) {
+            const pointGeometry = new THREE.BufferGeometry();
+            pointGeometry.setAttribute("position", new THREE.Float32BufferAttribute(anchor.position || [0, 0, 0], 3));
+            point = new THREE.Points(pointGeometry, pointMaterial.clone());
+            group.add(point);
+          }
+
+          const labelSprite = createAbsLabelSprite(anchor.label?.text || "", textStyle);
+          group.add(labelSprite);
+
+          annotations.push({
+            layer,
+            anchor,
+            line,
+            point,
+            labelSprite,
+            linePositions,
+            maxSegments
+          });
+        }
+      }
+
+      scene.add(group);
+
+      function update() {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const width = Math.max(rect.width, 1);
+        const height = Math.max(rect.height, 1);
+
+        for (const item of annotations) {
+          const anchorWorld = new THREE.Vector3().fromArray(item.anchor.position || [0, 0, 0]);
+          const anchorNdc = anchorWorld.clone().project(camera);
+          const route = item.anchor.route || item.layer.route || [];
+          let sx = (anchorNdc.x + 1) * 0.5 * width;
+          let sy = (-anchorNdc.y + 1) * 0.5 * height;
+          const depth = anchorNdc.z;
+          const worldPoints = [anchorWorld.clone()];
+          const screenPoints = [{ x: sx, y: sy }];
+
+          for (const command of route) {
+            if (command.op === "move_anchor") {
+              sx = (anchorNdc.x + 1) * 0.5 * width;
+              sy = (-anchorNdc.y + 1) * 0.5 * height;
+            } else if (command.op === "screen_up") {
+              sy -= Number(command.dy || 0);
+            } else if (command.op === "screen_down") {
+              sy += Number(command.dy || 0);
+            } else if (command.op === "screen_right") {
+              sx += Number(command.dx || 0);
+            } else if (command.op === "screen_left") {
+              sx -= Number(command.dx || 0);
+            } else {
+              continue;
+            }
+            screenPoints.push({ x: sx, y: sy });
+            worldPoints.push(unprojectScreenAtDepth(sx, sy, depth, width, height, camera));
+          }
+
+          let positionIndex = 0;
+          for (let i = 0; i < worldPoints.length - 1; i += 1) {
+            item.linePositions[positionIndex++] = worldPoints[i].x;
+            item.linePositions[positionIndex++] = worldPoints[i].y;
+            item.linePositions[positionIndex++] = worldPoints[i].z;
+            item.linePositions[positionIndex++] = worldPoints[i + 1].x;
+            item.linePositions[positionIndex++] = worldPoints[i + 1].y;
+            item.linePositions[positionIndex++] = worldPoints[i + 1].z;
+          }
+          for (let i = positionIndex; i < item.linePositions.length; i += 1) {
+            item.linePositions[i] = 0;
+          }
+          item.line.geometry.setDrawRange(0, Math.max(0, (worldPoints.length - 1) * 2));
+          item.line.geometry.attributes.position.needsUpdate = true;
+          item.line.geometry.computeBoundingSphere();
+
+          const labelPoint = screenPoints[screenPoints.length - 1] || screenPoints[0];
+          const labelOffset = item.anchor.label?.offset || item.layer.label?.offset || [12, 0];
+          const visible = Number.isFinite(anchorNdc.z) && anchorNdc.z >= -1 && anchorNdc.z <= 1;
+          const sprite = item.labelSprite;
+          const labelX = labelPoint.x + Number(labelOffset[0] || 0) + sprite.userData.pixelWidth / 2;
+          const labelY = labelPoint.y + Number(labelOffset[1] || 0);
+          const labelWorld = unprojectScreenAtDepth(labelX, labelY, depth, width, height, camera);
+          sprite.position.copy(labelWorld);
+          updateAbsLabelSpriteScale(sprite, labelWorld, camera, width, height);
+          sprite.visible = visible;
+        }
+      }
+
+      return { group, update };
+    }
+
+    function createAbsLabelSprite(text, textStyle) {
+      const fontSize = textStyle.size || 12;
+      const paddingX = 7;
+      const paddingY = 5;
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      context.font = `${fontSize}px Inter, system-ui, sans-serif`;
+      const metrics = context.measureText(text);
+      const width = Math.ceil(metrics.width + paddingX * 2);
+      const height = Math.ceil(fontSize + paddingY * 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.ceil(width * dpr);
+      canvas.height = Math.ceil(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      context.scale(dpr, dpr);
+      context.font = `${fontSize}px Inter, system-ui, sans-serif`;
+      context.textBaseline = "middle";
+
+      if (textStyle.background !== false) {
+        context.fillStyle = textStyle.backgroundColor || "rgba(255,255,255,0.94)";
+        context.strokeStyle = textStyle.borderColor || "#D1D5DB";
+        drawRoundRect(context, 0.5, 0.5, width - 1, height - 1, 4);
+        context.fill();
+        context.stroke();
+      }
+
+      context.fillStyle = textStyle.color || "#111827";
+      context.fillText(text, paddingX, height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.renderOrder = 1000;
+      sprite.userData.pixelWidth = width;
+      sprite.userData.pixelHeight = height;
+      return sprite;
+    }
+
+    function updateAbsLabelSpriteScale(sprite, worldPosition, camera, width, height) {
+      let worldPerPixel;
+      if (camera.isOrthographicCamera) {
+        worldPerPixel = (camera.top - camera.bottom) / (height * camera.zoom);
+      } else {
+        const distance = camera.position.distanceTo(worldPosition);
+        const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * distance;
+        worldPerPixel = visibleHeight / height;
+      }
+      sprite.scale.set(
+        sprite.userData.pixelWidth * worldPerPixel,
+        sprite.userData.pixelHeight * worldPerPixel,
+        1
+      );
+    }
+
+    function drawRoundRect(context, x, y, width, height, radius) {
+      context.beginPath();
+      context.moveTo(x + radius, y);
+      context.lineTo(x + width - radius, y);
+      context.quadraticCurveTo(x + width, y, x + width, y + radius);
+      context.lineTo(x + width, y + height - radius);
+      context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      context.lineTo(x + radius, y + height);
+      context.quadraticCurveTo(x, y + height, x, y + height - radius);
+      context.lineTo(x, y + radius);
+      context.quadraticCurveTo(x, y, x + radius, y);
+      context.closePath();
+    }
+
+    function unprojectScreenAtDepth(screenX, screenY, ndcDepth, width, height, camera) {
+      return new THREE.Vector3(
+        (screenX / width) * 2 - 1,
+        -(screenY / height) * 2 + 1,
+        ndcDepth
+      ).unproject(camera);
+    }
+
     let camera;
     let controls = null;
+    let absAnnotations = null;
     const initialCamera = sceneData.camera || {};
     const orbit = {
       target: fit.center.clone(),
@@ -716,6 +988,7 @@
     }
 
     function render() {
+      absAnnotations?.update();
       renderer.render(scene, camera);
     }
 
@@ -729,6 +1002,7 @@
     }
 
     camera = makeCamera();
+    absAnnotations = buildAbsAnnotations(sceneData, camera, renderer);
     resetView();
     resize();
     controls = installPointerOrbitControls();

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614191448",
+  "sceneId": "scene-20260614203117",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -100,7 +100,9 @@
         "x": [-3, -2, -1, 0, 1, 2, 3],
         "y": [-3, -2, -1, 0, 1, 2, 3],
         "z": [-1, -0.5, 0, 0.5]
-      }
+      },
+      "axisLengthFraction": 1,
+      "axisArrows": false
     }
   },
   "lights": {

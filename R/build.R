@@ -17,6 +17,7 @@ as_scene3d <- function(plot) {
       layer$type,
       point_cloud = compile_point_cloud_layer(plot, layer, i, theme),
       surface_grid = compile_surface_grid_layer(layer, i, theme),
+      abs_annotation = compile_abs_annotation_layer(plot, layer, i, theme),
       stop("Unsupported layer type: ", layer$type, call. = FALSE)
     )
   }
@@ -271,7 +272,9 @@ compile_coord_protocol <- function(coord, bounds) {
       domainMode = coord$grid$domain,
       origin = origin,
       domain = unname_domain(grid_domain),
-      majorBreaks = major_breaks
+      majorBreaks = major_breaks,
+      axisLengthFraction = coord$grid$axis_length_fraction %||% 1,
+      axisArrows = coord$grid$axis_arrows %||% FALSE
     )
   )
 }

@@ -14,7 +14,7 @@ find_package_root <- function(path = getwd()) {
 
 root <- find_package_root()
 source_files <- file.path(root, "R", c(
-  "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "layers.R", "build.R", "export.R", "demo_data.R"
+  "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "layers.R", "abs3d.R", "build.R", "export.R", "demo_data.R"
 ))
 invisible(lapply(source_files, source))
 
@@ -305,7 +305,15 @@ test_that("coord_3d grid protocol compiles origin and positive domain", {
 
   p <- ggplot3(df, aes3(x, y, z = z)) +
     geom_point3d() +
-    coord_3d(origin = c(1, 2, 0), grid = grid_3d(domain = "positive", planes = "xy"))
+    coord_3d(
+      origin = c(1, 2, 0),
+      grid = grid_3d(
+        domain = "positive",
+        planes = "xy",
+        axis_length_fraction = 0.5,
+        axis_arrows = TRUE
+      )
+    )
 
   scene <- as_scene3d(p)
   expect_equal(scene$coordinateSystem$origin, c(1, 2, 0))
@@ -313,6 +321,8 @@ test_that("coord_3d grid protocol compiles origin and positive domain", {
   expect_equal(scene$axes$grid$domainMode, "positive")
   expect_equal(scene$axes$grid$origin, c(1, 2, 0))
   expect_equal(scene$axes$grid$planes, "xy")
+  expect_equal(scene$axes$grid$axisLengthFraction, 0.5)
+  expect_true(scene$axes$grid$axisArrows)
 })
 
 test_that("coord_umap3d compiles to positive xy grid", {
@@ -366,4 +376,80 @@ test_that("UMAP-style scene includes positive grid and surface alpha", {
   expect_equal(scene$axes$grid$domainMode, "positive")
   expect_false(is.null(scene$layers[[1]]$data$alpha))
   expect_equal(length(scene$layers[[1]]$data$alpha), length(zmat))
+})
+
+test_that("abs_route returns pixel route commands", {
+  route <- abs_route(up = 72, right = 140)
+
+  expect_s3_class(route, "ggplot3scene_abs_route")
+  expect_equal(route$units, "px")
+  expect_equal(route$commands[[2]]$op, "screen_up")
+  expect_equal(route$commands[[2]]$dy, 72)
+  expect_equal(route$commands[[3]]$op, "screen_right")
+  expect_equal(route$commands[[3]]$dx, 140)
+})
+
+test_that("geom_abs_label3d requires x y z and label aesthetics", {
+  df <- data.frame(x = 1, y = 2, z = 3, label = "target")
+
+  p_missing <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_abs_label3d()
+  expect_error(as_scene3d(p_missing), "missing label")
+
+  p_ok <- ggplot3(df, aes3(x, y, z = z, label = label)) +
+    geom_abs_label3d()
+  scene <- as_scene3d(p_ok)
+  expect_equal(scene$layers[[1]]$type, "abs_annotation")
+})
+
+test_that("as_scene3d emits ABS annotation anchors and screen route", {
+  df <- data.frame(x = c(1, 2), y = c(2, 3), z = c(3, 4), label = c("A", "B"))
+
+  p <- ggplot3(df, aes3(x, y, z = z, label = label)) +
+    geom_abs_label3d(route = abs_route(up = 64, right = 120), occlusion = "depth-test")
+  scene <- as_scene3d(p)
+  layer <- scene$layers[[1]]
+
+  expect_equal(layer$type, "abs_annotation")
+  expect_equal(layer$space$type, "anchored_billboard")
+  expect_equal(layer$space$units, "px")
+  expect_equal(layer$space$occlusion, "depth-test")
+  expect_equal(layer$data$anchors[[1]]$position, c(1, 2, 3))
+  expect_equal(layer$data$anchors[[1]]$label$text, "A")
+  expect_true(any(vapply(layer$route, function(command) identical(command$op, "screen_up"), logical(1))))
+  expect_true(any(vapply(layer$route, function(command) identical(command$op, "screen_right"), logical(1))))
+  expect_true(layer$style$line$depthTest)
+})
+
+test_that("ABS annotation does not mutate point data or theme", {
+  df <- data.frame(x = c(1, 2), y = c(2, 3), z = c(3, 4), group = c("a", "b"))
+  label_df <- data.frame(x = 1, y = 2, z = 3, label = "A")
+
+  p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
+    geom_point3d() +
+    geom_abs_label3d(data = label_df, mapping = aes3(x, y, z = z, label = label)) +
+    theme_3d_scientific()
+  scene <- as_scene3d(p)
+
+  expect_equal(scene$layers[[1]]$type, "point_cloud")
+  expect_equal(scene$layers[[1]]$data$columns$x, df$x)
+  expect_equal(scene$layers[[2]]$type, "abs_annotation")
+  expect_true(is.null(scene$theme$abs))
+  expect_true(is.null(scene$theme$abs_annotation))
+})
+
+test_that("exported HTML contains ABS renderer builder", {
+  df <- data.frame(x = 1, y = 2, z = 3, label = "target")
+  scene <- as_scene3d(ggplot3(df, aes3(x, y, z = z, label = label)) + geom_abs_label3d())
+  html_file <- tempfile(fileext = ".html")
+  export_html(scene, html_file)
+  html <- paste(readLines(html_file, warn = FALSE), collapse = "\n")
+
+  expect_true(grepl("buildAbsAnnotations", html, fixed = TRUE))
+  expect_true(grepl("unprojectScreenAtDepth", html, fixed = TRUE))
+  expect_true(grepl("addAxisWithArrow", html, fixed = TRUE))
+  expect_true(grepl("createAbsLabelSprite", html, fixed = TRUE))
+  expect_true(grepl("CanvasTexture", html, fixed = TRUE))
+  expect_true(grepl("SpriteMaterial", html, fixed = TRUE))
+  expect_true(grepl("setDrawRange", html, fixed = TRUE))
 })
