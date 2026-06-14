@@ -1,0 +1,9 @@
+Package: ggplot3scene
+Type: Package
+Title: Prototype Scene3D Compiler for R
+Version: 0.0.1
+Depends: R (>= 4.1.0)
+Imports: jsonlite, htmltools
+Suggests: testthat
+Encoding: UTF-8
+License: MIT

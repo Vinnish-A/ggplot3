@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/ggplot3scene/scene3d.schema.json",
+  "title": "Scene3D v0.1",
+  "type": "object",
+  "required": ["schemaVersion", "sceneId", "coordinateSystem", "layers", "camera", "axes", "theme", "metadata"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "sceneId": { "type": "string" },
+    "coordinateSystem": {
+      "type": "object",
+      "required": ["type", "handedness", "aspect"],
+      "properties": {
+        "type": { "const": "cartesian3d" },
+        "handedness": { "const": "right" },
+        "aspect": { "type": "object" }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/pointCloudLayer" },
+          { "$ref": "#/$defs/surfaceGridLayer" }
+        ]
+      }
+    },
+    "camera": {
+      "type": "object",
+      "required": ["projection", "position", "target", "up", "zoom"],
+      "properties": {
+        "projection": { "enum": ["orthographic", "perspective"] },
+        "position": { "$ref": "#/$defs/vec3" },
+        "target": { "$ref": "#/$defs/vec3" },
+        "up": { "$ref": "#/$defs/vec3" },
+        "zoom": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "axes": { "type": "object" },
+    "lights": { "type": "object" },
+    "theme": { "type": "object" },
+    "metadata": { "type": "object" }
+  },
+  "$defs": {
+    "vec3": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "pointCloudLayer": {
+      "type": "object",
+      "required": ["id", "type", "name", "visible", "data", "material"],
+      "properties": {
+        "type": { "const": "point_cloud" },
+        "data": {
+          "type": "object",
+          "required": ["encoding", "columns"],
+          "properties": {
+            "encoding": { "const": "json-columns" },
+            "columns": {
+              "type": "object",
+              "required": ["x", "y", "z", "color", "size", "alpha"]
+            }
+          }
+        }
+      }
+    },
+    "surfaceGridLayer": {
+      "type": "object",
+      "required": ["id", "type", "name", "visible", "data", "material"],
+      "properties": {
+        "type": { "const": "surface_grid" },
+        "data": {
+          "type": "object",
+          "required": ["encoding", "x", "y", "z", "shape"],
+          "properties": {
+            "encoding": { "const": "json-grid" },
+            "shape": {
+              "type": "array",
+              "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        }
+      }
+    }
+  }
+}

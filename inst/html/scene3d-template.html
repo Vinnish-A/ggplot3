@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scene3D</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #ffffff;
+      color: #1f2937;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+    #app {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      background: #ffffff;
+    }
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #d1d5db;
+      background: #f9fafb;
+      z-index: 2;
+    }
+    button {
+      appearance: none;
+      border: 1px solid #9ca3af;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #111827;
+      font: inherit;
+      font-size: 13px;
+      line-height: 1;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #f3f4f6;
+    }
+    #status {
+      margin-left: auto;
+      color: #6b7280;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    #viewport {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      touch-action: none;
+    }
+    canvas.dragging {
+      cursor: grabbing;
+    }
+    #fallback {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      max-width: min(520px, calc(100vw - 24px));
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #4b5563;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="toolbar">
+      <button id="reset-view" type="button">Reset View</button>
+      <button id="export-png" type="button">Export PNG</button>
+      <button id="export-view" type="button">Export view.json</button>
+      <div id="status">Loading renderer</div>
+    </div>
+    <div id="viewport">
+      <div id="fallback">This prototype loads three.js from a CDN. The Scene3D data is embedded in this file, but first render requires network access unless a local vendor bundle is added later.</div>
+    </div>
+  </div>
+
+  <script id="scene3d-data" type="application/json">
+{}
+  </script>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
+
+    const sceneData = JSON.parse(document.getElementById("scene3d-data").textContent);
+    const viewport = document.getElementById("viewport");
+    const status = document.getElementById("status");
+    const fallback = document.getElementById("fallback");
+
+    THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(sceneData.theme?.scene?.background || "#ffffff");
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    viewport.appendChild(renderer.domElement);
+
+    const world = new THREE.Group();
+    scene.add(world);
+
+    const bounds = {
+      min: new THREE.Vector3(Infinity, Infinity, Infinity),
+      max: new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+    };
+
+    function includePoint(x, y, z) {
+      bounds.min.min(new THREE.Vector3(x, y, z));
+      bounds.max.max(new THREE.Vector3(x, y, z));
+    }
+
+    function addLights() {
+      const ambient = sceneData.lights?.ambient || {};
+      scene.add(new THREE.AmbientLight(
+        new THREE.Color(ambient.color || "#ffffff"),
+        ambient.intensity ?? 0.65
+      ));
+
+      const key = sceneData.lights?.key || {};
+      const light = new THREE.DirectionalLight(
+        new THREE.Color(key.color || "#ffffff"),
+        key.intensity ?? 0.85
+      );
+      const pos = key.position || [3, -4, 5];
+      light.position.set(pos[0], pos[1], pos[2]);
+      scene.add(light);
+    }
+
+    function addPointCloud(layer) {
+      const columns = layer.data.columns;
+      const n = columns.x.length;
+      const positions = new Float32Array(n * 3);
+      const colors = new Float32Array(n * 3);
+      const color = new THREE.Color();
+
+      for (let i = 0; i < n; i += 1) {
+        const x = Number(columns.x[i]);
+        const y = Number(columns.y[i]);
+        const z = Number(columns.z[i]);
+        positions[i * 3] = x;
+        positions[i * 3 + 1] = y;
+        positions[i * 3 + 2] = z;
+        includePoint(x, y, z);
+
+        color.set(columns.color[i] || "#3366CC");
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+      const material = new THREE.PointsMaterial({
+        size: average(columns.size, 4),
+        vertexColors: true,
+        opacity: average(columns.alpha, 1),
+        transparent: average(columns.alpha, 1) < 1,
+        depthTest: layer.material?.depthTest !== false,
+        sizeAttenuation: false
+      });
+
+      world.add(new THREE.Points(geometry, material));
+    }
+
+    function addSurfaceGrid(layer) {
+      const x = layer.data.x;
+      const y = layer.data.y;
+      const z = layer.data.z;
+      const nx = layer.data.shape[0];
+      const ny = layer.data.shape[1];
+
+      const positions = new Float32Array(nx * ny * 3);
+      for (let i = 0; i < nx; i += 1) {
+        for (let j = 0; j < ny; j += 1) {
+          const idx = i * ny + j;
+          const px = Number(x[i]);
+          const py = Number(y[j]);
+          const pz = Number(z[idx]);
+          positions[idx * 3] = px;
+          positions[idx * 3 + 1] = py;
+          positions[idx * 3 + 2] = pz;
+          includePoint(px, py, pz);
+        }
+      }
+
+      const indices = [];
+      for (let i = 0; i < nx - 1; i += 1) {
+        for (let j = 0; j < ny - 1; j += 1) {
+          const a = i * ny + j;
+          const b = (i + 1) * ny + j;
+          const c = (i + 1) * ny + (j + 1);
+          const d = i * ny + (j + 1);
+          indices.push(a, b, d, b, c, d);
+        }
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(layer.material?.fill || "#4477AA"),
+        opacity: layer.material?.opacity ?? 0.65,
+        transparent: (layer.material?.opacity ?? 0.65) < 1,
+        side: THREE.DoubleSide,
+        depthWrite: (layer.material?.opacity ?? 0.65) >= 1
+      });
+
+      world.add(new THREE.Mesh(geometry, material));
+    }
+
+    function average(values, fallback) {
+      if (!values || values.length === 0) return fallback;
+      let total = 0;
+      for (const value of values) total += Number(value);
+      return total / values.length;
+    }
+
+    function computeBounds() {
+      if (!Number.isFinite(bounds.min.x)) {
+        bounds.min.set(-1, -1, -1);
+        bounds.max.set(1, 1, 1);
+      }
+      const center = bounds.min.clone().add(bounds.max).multiplyScalar(0.5);
+      const size = bounds.max.clone().sub(bounds.min);
+      const radius = Math.max(size.x, size.y, size.z, 1) * 0.75;
+      return { center, size, radius };
+    }
+
+    for (const layer of sceneData.layers || []) {
+      if (layer.visible === false) continue;
+      if (layer.type === "point_cloud") addPointCloud(layer);
+      if (layer.type === "surface_grid") addSurfaceGrid(layer);
+    }
+
+    addLights();
+    const fit = computeBounds();
+
+    const gridColor = sceneData.theme?.axis?.["grid.major"] || "#D9DDE3";
+    const lineColor = sceneData.theme?.axis?.line || "#4B5563";
+    const grid = new THREE.GridHelper(fit.radius * 3, 12, gridColor, gridColor);
+    grid.rotation.x = Math.PI / 2;
+    grid.position.copy(fit.center);
+    scene.add(grid);
+
+    const axes = new THREE.AxesHelper(fit.radius * 1.4);
+    axes.position.copy(fit.center);
+    axes.children?.forEach?.((child) => child.material?.color?.set(lineColor));
+    scene.add(axes);
+
+    let camera;
+    let controls = null;
+    const initialCamera = sceneData.camera || {};
+    const orbit = {
+      target: fit.center.clone(),
+      radius: Math.max(fit.radius * 3.5, 1),
+      azimuth: 0,
+      elevation: 0,
+      baseSpan: Math.max(fit.radius * 2.6 / (initialCamera.zoom || 1), 1)
+    };
+
+    function makeCamera() {
+      const width = Math.max(viewport.clientWidth, 1);
+      const height = Math.max(viewport.clientHeight, 1);
+      const aspect = width / height;
+      const projection = initialCamera.projection || "orthographic";
+      const zoom = initialCamera.zoom || 1;
+
+      if (projection === "perspective") {
+        return new THREE.PerspectiveCamera(45, aspect, 0.01, 10000);
+      }
+
+      const span = Math.max(fit.radius * 2.6 / zoom, 1);
+      return new THREE.OrthographicCamera(
+        -span * aspect / 2,
+        span * aspect / 2,
+        span / 2,
+        -span / 2,
+        -10000,
+        10000
+      );
+    }
+
+    function resetView() {
+      const pos = initialCamera.position || [1.8, -2.4, 1.6];
+      const target = initialCamera.target || [fit.center.x, fit.center.y, fit.center.z];
+      const distance = Math.max(fit.radius * 3.5, 1);
+      const direction = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize();
+
+      orbit.target.set(target[0], target[1], target[2]);
+      camera.position.copy(orbit.target.clone().add(direction.multiplyScalar(distance)));
+      camera.up.fromArray(initialCamera.up || [0, 0, 1]);
+      setOrbitFromCamera();
+      updateCameraFromOrbit();
+      render();
+    }
+
+    function setOrbitFromCamera() {
+      const offset = camera.position.clone().sub(orbit.target);
+      orbit.radius = Math.max(offset.length(), 0.001);
+      orbit.azimuth = Math.atan2(offset.y, offset.x);
+      orbit.elevation = Math.asin(THREE.MathUtils.clamp(offset.z / orbit.radius, -1, 1));
+    }
+
+    function updateCameraFromOrbit() {
+      const maxElevation = Math.PI / 2 - 0.02;
+      orbit.elevation = THREE.MathUtils.clamp(orbit.elevation, -maxElevation, maxElevation);
+
+      const cosElevation = Math.cos(orbit.elevation);
+      const offset = new THREE.Vector3(
+        orbit.radius * cosElevation * Math.cos(orbit.azimuth),
+        orbit.radius * cosElevation * Math.sin(orbit.azimuth),
+        orbit.radius * Math.sin(orbit.elevation)
+      );
+      camera.position.copy(orbit.target.clone().add(offset));
+      camera.up.fromArray(initialCamera.up || [0, 0, 1]);
+      camera.lookAt(orbit.target);
+      camera.updateProjectionMatrix();
+      render();
+    }
+
+    function resize() {
+      const width = Math.max(viewport.clientWidth, 1);
+      const height = Math.max(viewport.clientHeight, 1);
+      renderer.setSize(width, height, false);
+
+      const aspect = width / height;
+      if (camera.isPerspectiveCamera) {
+        camera.aspect = aspect;
+      } else {
+        const span = Math.max(fit.radius * 2.6 / (initialCamera.zoom || 1), 1);
+        camera.left = -span * aspect / 2;
+        camera.right = span * aspect / 2;
+        camera.top = span / 2;
+        camera.bottom = -span / 2;
+      }
+      camera.updateProjectionMatrix();
+      render();
+    }
+
+    function installPointerOrbitControls() {
+      const dom = renderer.domElement;
+      const state = {
+        target: orbit.target,
+        dragging: false,
+        pointerId: null,
+        lastX: 0,
+        lastY: 0
+      };
+
+      dom.addEventListener("contextmenu", (event) => event.preventDefault());
+      dom.addEventListener("pointerdown", (event) => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        state.dragging = true;
+        state.pointerId = event.pointerId;
+        state.lastX = event.clientX;
+        state.lastY = event.clientY;
+        dom.classList.add("dragging");
+        dom.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      });
+
+      dom.addEventListener("pointermove", (event) => {
+        if (!state.dragging || event.pointerId !== state.pointerId) return;
+        const dx = event.clientX - state.lastX;
+        const dy = event.clientY - state.lastY;
+        state.lastX = event.clientX;
+        state.lastY = event.clientY;
+
+        orbit.azimuth -= dx * 0.008;
+        orbit.elevation += dy * 0.008;
+        updateCameraFromOrbit();
+      });
+
+      function stopDrag(event) {
+        if (state.pointerId !== null && event.pointerId !== state.pointerId) return;
+        state.dragging = false;
+        state.pointerId = null;
+        dom.classList.remove("dragging");
+      }
+
+      dom.addEventListener("pointerup", stopDrag);
+      dom.addEventListener("pointercancel", stopDrag);
+      dom.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const scale = Math.exp(event.deltaY * 0.001);
+        if (camera.isPerspectiveCamera) {
+          orbit.radius = THREE.MathUtils.clamp(orbit.radius * scale, fit.radius * 0.25, fit.radius * 40);
+        } else {
+          camera.zoom = THREE.MathUtils.clamp(camera.zoom / scale, 0.2, 20);
+        }
+        updateCameraFromOrbit();
+      }, { passive: false });
+
+      return {
+        target: state.target,
+        update: updateCameraFromOrbit
+      };
+    }
+
+    function render() {
+      renderer.render(scene, camera);
+    }
+
+    function download(name, mime, content) {
+      const a = document.createElement("a");
+      const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    camera = makeCamera();
+    resetView();
+    resize();
+    controls = installPointerOrbitControls();
+    fallback.remove();
+    status.textContent = "Scene3D renderer ready; drag to rotate, wheel to zoom";
+
+    window.addEventListener("resize", resize);
+    document.getElementById("reset-view").addEventListener("click", resetView);
+    document.getElementById("export-png").addEventListener("click", () => {
+      render();
+      renderer.domElement.toBlob((blob) => download("scene3d.png", "image/png", blob));
+    });
+    document.getElementById("export-view").addEventListener("click", () => {
+      const view = {
+        schemaVersion: "0.1.0",
+        camera: {
+          projection: camera.isPerspectiveCamera ? "perspective" : "orthographic",
+          position: camera.position.toArray(),
+          target: orbit.target.toArray(),
+          up: camera.up.toArray(),
+          zoom: camera.zoom || initialCamera.zoom || 1
+        }
+      };
+      download("view.json", "application/json", JSON.stringify(view, null, 2));
+    });
+
+    render();
+  </script>
+</body>
+</html>
