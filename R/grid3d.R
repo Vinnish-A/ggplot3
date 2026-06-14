@@ -231,7 +231,10 @@ axis_3d <- function(length_fraction = 1,
                     labels = TRUE,
                     titles = TRUE,
                     label_placement = c("auto", "outside", "inside", "none"),
-                    tick_placement = c("auto", "outside", "inside", "none")) {
+                    tick_placement = c("auto", "outside", "inside", "none"),
+                    title_position = 0.5,
+                    tick_offset = 16,
+                    title_offset = 56) {
   label_placement <- match.arg(label_placement)
   tick_placement <- match.arg(tick_placement)
   if (!is.numeric(length_fraction) || length(length_fraction) != 1L ||
@@ -247,6 +250,16 @@ axis_3d <- function(length_fraction = 1,
   if (!is.logical(titles) || length(titles) != 1L || is.na(titles)) {
     stop("titles must be TRUE or FALSE.", call. = FALSE)
   }
+  if (!is.numeric(title_position) || length(title_position) != 1L ||
+      !is.finite(title_position) || title_position < 0 || title_position > 1) {
+    stop("title_position must be a numeric scalar in [0, 1].", call. = FALSE)
+  }
+  for (nm in c("tick_offset", "title_offset")) {
+    value <- get(nm)
+    if (!is.numeric(value) || length(value) != 1L || !is.finite(value) || value < 0) {
+      stop(nm, " must be a non-negative numeric scalar.", call. = FALSE)
+    }
+  }
 
   out <- list(
     length_fraction = length_fraction,
@@ -254,7 +267,10 @@ axis_3d <- function(length_fraction = 1,
     labels = labels,
     titles = titles,
     label_placement = label_placement,
-    tick_placement = tick_placement
+    tick_placement = tick_placement,
+    title_position = title_position,
+    tick_offset = tick_offset,
+    title_offset = title_offset
   )
   class(out) <- c("ggplot3scene_axis3d", "list")
   out

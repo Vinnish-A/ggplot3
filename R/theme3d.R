@@ -19,6 +19,23 @@ element_light_3d <- function(color = "#FFFFFF", intensity = 1, position = NULL, 
   light
 }
 
+element_rect_3d <- function(fill = NA, colour = NA, linewidth = 0, alpha = 1) {
+  list(fill = fill, colour = colour, linewidth = linewidth, alpha = alpha)
+}
+
+element_line_3d <- function(colour = "#FFFFFF", linewidth = 0.6, alpha = 1) {
+  list(colour = colour, linewidth = linewidth, alpha = alpha)
+}
+
+element_text_3d <- function(size = 11, colour = "#222222", face = "plain",
+                            hjust = 0, family = "", alpha = 1) {
+  list(size = size, colour = colour, face = face, hjust = hjust, family = family, alpha = alpha)
+}
+
+element_plane_3d <- function(fill = "#E5E5E5", colour = NA, alpha = 1) {
+  list(fill = fill, colour = colour, alpha = alpha)
+}
+
 element_abs_line <- function(color = "#111827", width = 2, opacity = 1) {
   list(color = color, width = width, opacity = opacity)
 }
@@ -109,6 +126,89 @@ theme_3d_scientific <- function() {
   theme
 }
 
+theme_3d_gray <- function(base_size = 11, base_family = "") {
+  theme <- list(
+    plot = list(
+      background = element_rect_3d(fill = "#FFFFFF", colour = NA),
+      title = element_text_3d(size = base_size * 1.25, colour = "#222222", face = "bold", family = base_family),
+      subtitle = element_text_3d(size = base_size, colour = "#444444", family = base_family),
+      caption = element_text_3d(size = base_size * 0.82, colour = "#555555", hjust = 1, family = base_family),
+      title.position = "plot"
+    ),
+    scene = list(
+      background = element_rect_3d(fill = "#FFFFFF", colour = NA),
+      face = element_plane_3d(fill = "#E5E5E5", colour = NA, alpha = 1),
+      box = element_line_3d(colour = NA, linewidth = 0)
+    ),
+    axis = list(
+      grid.major = element_line_3d(colour = "#FFFFFF", linewidth = 0.65),
+      grid.minor = NULL,
+      line = element_line_3d(colour = "#FFFFFF", linewidth = 0.45),
+      text = element_text_3d(size = base_size * 0.78, colour = "#333333", family = base_family),
+      title = element_text_3d(size = base_size, colour = "#222222", family = base_family)
+    ),
+    legend = list(
+      position = "right",
+      position.inside = c(0.98, 0.98),
+      justification = c(1, 1),
+      direction = "vertical",
+      box = "vertical",
+      box.spacing = 6,
+      background = element_rect_3d(fill = NA, colour = NA),
+      key = element_rect_3d(fill = "#E5E5E5", colour = NA),
+      text = element_text_3d(size = base_size * 0.8, colour = "#222222", family = base_family),
+      title = element_text_3d(size = base_size, colour = "#222222", family = base_family),
+      margin = margin3d(6, 6, 6, 6)
+    ),
+    material = list(
+      point = list(
+        type = "points",
+        sizeUnit = "screen",
+        depthTest = TRUE,
+        depthWrite = TRUE,
+        color = "#3366CC",
+        size = 2.2,
+        opacity = 1
+      ),
+      surface = list(
+        type = "surface",
+        model = "unlit",
+        fill = "#4477AA",
+        opacity = 0.65,
+        side = "double"
+      )
+    ),
+    abs = list(
+      line = element_abs_line(),
+      point = element_abs_point(),
+      text = element_abs_text(),
+      label.background = element_abs_label_background()
+    ),
+    light = list(
+      ambient = list(color = "#FFFFFF", intensity = 0.8),
+      key = list(color = "#FFFFFF", intensity = 0.35, position = c(1, -1, 2))
+    )
+  )
+  class(theme) <- c("ggplot3scene_theme", "list")
+  theme
+}
+
+theme_3d_minimal <- function(base_size = 11, base_family = "") {
+  theme <- theme_3d_gray(base_size = base_size, base_family = base_family)
+  theme$scene$face <- element_plane_3d(fill = "#FFFFFF", colour = NA, alpha = 1)
+  theme$axis$grid.major <- element_line_3d(colour = "#E5E7EB", linewidth = 0.5)
+  theme
+}
+
+theme_3d_void <- function(base_size = 11, base_family = "") {
+  theme <- theme_3d_gray(base_size = base_size, base_family = base_family)
+  theme$scene$face <- element_plane_3d(fill = "#FFFFFF", colour = NA, alpha = 0)
+  theme$axis$grid.major <- NULL
+  theme$axis$line <- element_line_3d(colour = NA, linewidth = 0)
+  theme$axis$text <- element_text_3d(size = base_size * 0.8, colour = NA, family = base_family)
+  theme
+}
+
 theme_3d_umap <- function() {
   theme <- list(
     scene = list(background = "#FFFFFF"),
@@ -180,15 +280,35 @@ resolve_theme3d <- function(theme) {
   if (!inherits(theme, "ggplot3scene_theme")) {
     stop("theme must be created with theme_3d() or theme_3d_scientific().", call. = FALSE)
   }
-  as_json_theme(merge_theme3d(theme_3d_scientific(), theme))
+  as_json_theme(merge_theme3d(theme_3d_gray(), theme))
 }
 
 validate_theme_key <- function(key) {
   allowed <- c(
     "scene.background",
+    "scene.face",
+    "scene.box",
+    "plot.background",
+    "plot.title",
+    "plot.subtitle",
+    "plot.caption",
+    "plot.title.position",
     "axis.grid.major",
+    "axis.grid.minor",
     "axis.line",
     "axis.text",
+    "axis.title",
+    "legend.position",
+    "legend.position.inside",
+    "legend.justification",
+    "legend.direction",
+    "legend.box",
+    "legend.box.spacing",
+    "legend.background",
+    "legend.key",
+    "legend.text",
+    "legend.title",
+    "legend.margin",
     "material.point",
     "material.surface",
     "abs.line",

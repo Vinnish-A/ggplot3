@@ -5,7 +5,7 @@ R builds a language-neutral Scene3D JSON document; the browser renderer consumes
 only that JSON and renders points, surface grids, camera state, theme defaults,
 and lights.
 
-This is a Stage 3 prototype, not a full ggplot2 extension and not a full 3D
+This is a Stage 4 prototype, not a full ggplot2 extension and not a full 3D
 engine.
 
 ## Current MVP
@@ -19,19 +19,20 @@ engine.
 - `geom_surface_mesh3d()`, `geom_contour_stack3d()`, and `geom_ridgeline3d()` for non-grid surface objects.
 - `grid2d()` reusable surface grid objects with optional alpha/mask payloads.
 - R-side surface-producing stats: `stat_density_surface3d()`, `stat_function_surface3d()`, and `stat_smooth_surface3d()`.
-- Scene3D-native face projections with density, points, path, and contour variants.
+- Scene3D-native face projections with density, points, path, contour, and source-linked point-face projection variants.
 - `alpha_edge_fade()`, `alpha_density_fade()`, and `alpha_combined_fade()` for soft surface alpha.
-- `coord_3d()` camera and projection settings.
+- `coord_3d()` coordinate/grid settings and `camera_3d()` reproducible view settings.
+- `layout_3d()`, `labs3d()`, `render_spec()`, and `ggsave3()` for figure layout and fixed-size export.
 - `grid_3d()`, `axis_3d()`, and `coord_umap3d()` for coordinate/grid/axis display protocol.
 - `guide_legend_scene3d()` and `guide_colorbar_scene3d()` for first-class guide JSON.
-- `theme_3d()` and `theme_3d_scientific()` JSON-compatible theme defaults.
+- `theme_3d()`, `theme_3d_gray()`, and `theme_3d_scientific()` JSON-compatible theme defaults.
 - `theme_3d_umap()` visual defaults for UMAP-style scenes.
 - `element_material_3d()` and `element_light_3d()` for material/light theme entries.
 - ABS annotations with `geom_abs_label3d()` and composable `abs_route()` commands.
 - `as_scene3d()` compiler boundary.
 - `write_scene_json()` for Scene3D JSON.
-- `export_html()` for a standalone HTML file with embedded scene data.
-- Minimal three.js renderer loaded from CDN, with built-in drag-to-rotate and wheel zoom controls.
+- `export_html()` for HTML preview with embedded scene data and a local three.js sidecar.
+- Minimal three.js renderer with built-in drag-to-rotate and wheel zoom controls.
 
 ## Install Dependencies
 
@@ -52,10 +53,19 @@ This writes:
 - `demo.html`
 - `demo.scene.json`
 
-Open `demo.html` in a browser. The scene data is embedded in the HTML. The first
-prototype loads three.js from a CDN, so first render needs network access until
-a local vendor bundle is added. Camera interaction is built into the exported
-HTML: drag to rotate and use the mouse wheel or trackpad scroll to zoom.
+Serve the package directory and open `demo.html` in a browser:
+
+```sh
+Rscript -e 'httpuv::runStaticServer(".", port = 8765, browse = TRUE)'
+```
+
+Then open `http://127.0.0.1:8765/demo.html`. The scene data is embedded in the
+HTML and `export_html()` writes a local `ggplot3scene-three.module.js` sidecar
+next to the HTML. Some browsers block local ES modules when an HTML file is
+opened directly with `file://`; in that case the page shows a renderer-start
+diagnostic instead of staying on `Loading renderer`. Camera interaction is built
+into the exported HTML: drag to rotate and use the mouse wheel or trackpad
+scroll to zoom.
 
 ## API Example
 
@@ -86,6 +96,84 @@ scene <- as_scene3d(p)
 write_scene_json(scene, "demo.scene.json")
 export_html(scene, "demo.html")
 ```
+
+## Stage 4 figure layout and export
+
+Stage 4 adds a figure-level layout contract. Title, subtitle, caption, outside
+legend, inside legend, and the WebGL scene viewport are laid out by the same
+renderer path used by HTML preview and `ggsave3()` export.
+
+```r
+p <- ggplot3(mpg, aes3(displ, hwy, z = cty, colour = class)) +
+  geom_point3d(size = 2.2, projection = "faces") +
+  labs3d(
+    title = "3D scatterplot",
+    subtitle = "Default ggplot3 gray style",
+    caption = "Source: mpg",
+    x = "displ",
+    y = "hwy",
+    z = "cty",
+    colour = "class"
+  ) +
+  view_default3d() +
+  theme_3d_gray()
+
+ggsave3("demo-default.png", p, width = 6.72, height = 4.8, units = "in", dpi = 100)
+```
+
+`geom_point3d(projection = "faces")` emits a source-linked face projection
+decorator. The Scene3D JSON references the source point layer by `sourceLayerId`
+instead of copying the point table for every cube face.
+
+Inside legends are overlay boxes positioned relative to the scene viewport:
+
+```r
+p + theme_3d(
+  legend.position = "inside",
+  legend.position.inside = c(0.98, 0.95),
+  legend.justification = c(1, 1)
+)
+```
+
+Point colour legends are trained on the R side. `labs3d(colour = "...")`
+sets the guide title, and `geom_point3d(show_legend = FALSE)` suppresses the
+automatic guide for that layer. Source-linked face projections do not create
+duplicate legend entries.
+
+`ggsave3()` supports fixed-size PNG export through headless Chromium and hybrid
+SVG export with a rasterized 3D scene plus vector title/legend text. SVG files
+use the requested physical `width`/`height` as root dimensions and keep the
+high-resolution raster scene in the `viewBox`.
+
+Run the Stage 4 demos:
+
+```sh
+Rscript examples/demo_stage4_default_gray.R
+Rscript examples/demo_stage4_inside_legend.R
+Rscript examples/demo_stage4_title_svg.R
+Rscript examples/demo_stage4_large_point_policy.R
+```
+
+These write:
+
+- `demo-default.png`
+- `demo-inside-legend.png`
+- `demo-title.svg`
+- `demo_stage4_large_point_policy.html`
+- `demo_stage4_large_point_policy.scene.json`
+- matching HTML and Scene3D JSON files
+
+Large point clouds can use a Stage 4 performance policy:
+
+```r
+ggplot3(df, aes3(x, y, z = z, colour = group)) +
+  geom_point3d(max_points = 50000, sampling = "stratified") +
+  performance_policy3d(max_json_points = 50000)
+```
+
+The compiled point layer records original/emitted point counts and excludes
+hover metadata by default. Source-linked face projections still reference the
+point layer instead of duplicating point data.
 
 ## UMAP-style coordinates and positive grid
 
@@ -355,12 +443,12 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 - `ggplot3_from_ggplot()` currently supports only simple point, path, line, and segment layers.
 - No full scale system; colour mapping covers basic discrete character/factor columns and numeric continuous columns.
 - Surface stats are intentionally small: density uses an R Gaussian product-kernel estimator and smooth surfaces use a quadratic `lm`.
-- Face projection supports density grids, points, paths, and contour lines, not arbitrary ggplot2 layer projection.
-- No R-side headless PNG export.
-- No local three.js vendor bundle yet.
+- Face projection supports density grids, points, paths, contour lines, and source-linked point face projections, not arbitrary ggplot2 layer projection.
+- `ggsave3()` requires a local Chromium executable for PNG/SVG export.
+- HTML preview writes a local three.js sidecar rather than a full single-file vendor bundle.
 - Camera interaction is intentionally minimal: drag rotates and wheel zooms; pan is not implemented yet.
 - Point size is rendered as screen-space average size in the prototype renderer.
-- Scene3D schema is intentionally minimal.
+- Scene3D schema is intentionally permissive while Stage4 layout/render/view protocols settle.
 - Theme3D intentionally does not control camera, projection, stats, scale domains, or data transforms.
 - Theme3D intentionally does not control axis length, axis arrows, guide domains, or guide entries.
 - `coord_umap3d()` controls display conventions only; UMAP computation is out of scope.
@@ -368,8 +456,8 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 
 ## Roadmap
 
-1. Stabilize Scene3D v0.1 validation and clearer error messages.
-2. Add local vendor fallback for three.js and OrbitControls.
-3. Expand renderer controls for visibility, opacity, reset, PNG, and view import.
-4. Add focused tests for theme resolution, colour mapping, and invalid layers.
-5. Add stronger schema validation, view import/export tests, and local renderer bundling.
+1. Add stronger schema validation for layout, render, view, and guides.
+2. Add view.json import to `ggsave3()` examples and visual regression checks.
+3. Improve camera fitting and axis label placement for publication defaults.
+4. Expand hybrid SVG vector overlay coverage beyond title, caption, and guides.
+5. Add binary-buffer export for larger point clouds.

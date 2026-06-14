@@ -45,6 +45,54 @@
         "zoom": { "type": "number", "exclusiveMinimum": 0 }
       }
     },
+    "view": {
+      "type": "object",
+      "properties": {
+        "camera": { "type": "object" }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "properties": {
+        "title": { "type": ["string", "null"] },
+        "subtitle": { "type": ["string", "null"] },
+        "caption": { "type": ["string", "null"] }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "properties": {
+        "plotMargin": { "type": "object" },
+        "titleArea": { "type": "object" },
+        "legendArea": { "type": "object" },
+        "sceneViewport": { "type": "object" }
+      }
+    },
+    "render": {
+      "type": ["object", "null"],
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "units": { "enum": ["in", "cm", "mm", "px"] },
+        "dpi": { "type": "number" },
+        "cssWidth": { "type": "integer" },
+        "cssHeight": { "type": "integer" },
+        "pixelWidth": { "type": "integer" },
+        "pixelHeight": { "type": "integer" },
+        "devicePixelRatio": { "type": "number" }
+      }
+    },
+    "panels": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string" },
+        "faces": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "style": { "type": "object" }
+      }
+    },
     "axes": {
       "type": "object",
       "properties": {
@@ -394,6 +442,8 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "bar": { "type": "object" },
+        "breaks": { "type": "array" },
         "materialMode": { "enum": ["unlit", "lit"] }
       }
     },
@@ -406,14 +456,21 @@
         "title": { "type": "string" },
         "entries": {
           "type": "array",
-          "items": { "type": "object" }
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "value": { "type": "string" },
+              "glyph": { "type": "object" }
+            }
+          }
         },
         "materialMode": { "enum": ["unlit", "lit"] }
       }
     },
     "faceProjectionLayer": {
       "type": "object",
-      "required": ["id", "type", "name", "visible", "space", "plane", "axes", "offset", "clip", "data", "style"],
+      "required": ["id", "type", "name", "visible", "space", "data", "style"],
       "properties": {
         "type": { "const": "face_projection" },
         "space": {
@@ -433,11 +490,16 @@
         },
         "offset": { "type": "number" },
         "clip": { "type": "boolean" },
+        "sourceLayerId": { "type": "string" },
+        "faces": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "data": {
           "type": "object",
           "properties": {
-            "kind": { "enum": ["grid2d", "face_points", "face_path", "face_contour"] },
-            "encoding": { "enum": ["json-grid", "json-columns", "json-polylines"] },
+            "kind": { "enum": ["grid2d", "face_points", "face_path", "face_contour", "source_point_cloud"] },
+            "encoding": { "enum": ["json-grid", "json-columns", "json-polylines", "source-reference"] },
             "columns": { "type": "object" },
             "polylines": {
               "type": "array",
@@ -463,13 +525,16 @@
         "style": {
           "type": "object",
           "properties": {
-            "type": { "enum": ["density_grid", "points", "path", "contour_lines"] },
+            "type": { "enum": ["density_grid", "points", "path", "contour_lines", "source_points"] },
             "material": { "enum": ["unlit"] },
             "fill": { "type": "string" },
             "color": { "type": "string" },
             "opacity": { "type": "number" },
             "width": { "type": "number" },
-            "widthUnit": { "const": "px" }
+            "widthUnit": { "const": "px" },
+            "alphaMultiplier": { "type": "number" },
+            "sizeMultiplier": { "type": "number" },
+            "depthWrite": { "type": "boolean" }
           }
         }
       }

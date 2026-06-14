@@ -2,6 +2,12 @@ Package: ggplot3scene
 Type: Package
 Title: Prototype Scene3D Compiler for R
 Version: 0.0.1
+Authors@R: person("ggplot3scene", "contributors", role = c("aut", "cre"), email = "noreply@example.com")
+Author: ggplot3scene contributors
+Maintainer: ggplot3scene contributors <noreply@example.com>
+Description: Builds language-neutral Scene3D JSON documents from R data and
+    exports interactive HTML previews plus fixed-size figure outputs for
+    prototype three-dimensional scientific plots.
 Depends: R (>= 4.1.0)
 Imports: jsonlite, htmltools
 Suggests: testthat

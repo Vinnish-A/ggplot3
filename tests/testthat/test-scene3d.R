@@ -6,17 +6,22 @@ find_package_root <- function(path = getwd()) {
     }
     parent <- dirname(path)
     if (identical(parent, path)) {
-      stop("Could not locate package root.", call. = FALSE)
+      return(NULL)
     }
     path <- parent
   }
 }
 
 root <- find_package_root()
-source_files <- file.path(root, "R", c(
-  "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "ggplot_adapter.R", "layers.R", "abs3d.R", "surface_stats.R", "surface_geoms.R", "face_projection.R", "build.R", "export.R", "demo_data.R"
-))
-invisible(lapply(source_files, source))
+if (is.null(root)) {
+  library(ggplot3scene)
+  root <- normalizePath(getwd(), mustWork = FALSE)
+} else {
+  source_files <- file.path(root, "R", c(
+    "aes3.R", "grid3d.R", "layout.R", "theme3d.R", "camera.R", "scene3d.R", "ggplot_adapter.R", "layers.R", "abs3d.R", "surface_stats.R", "surface_geoms.R", "face_projection.R", "build.R", "export.R", "demo_data.R"
+  ))
+  invisible(lapply(source_files, source))
+}
 
 test_that("ggplot3 creates plot object and accepts point layer", {
   df <- data.frame(x = 1:3, y = 2:4, z = 3:5, group = c("a", "b", "a"))
@@ -113,6 +118,176 @@ test_that("ggplot2 adapter supports point path and segment without leaking ggplo
   expect_equal(scene$layers[[3]]$data$polylines[[1]]$z, c(0, 0))
   scene_text <- jsonlite::toJSON(scene, auto_unbox = TRUE)
   expect_false(grepl("quosure|ggproto|grob|ggplot_build|ggplot2", scene_text))
+})
+
+test_that("Stage4 layout labels camera and automatic legend compile", {
+  df <- data.frame(
+    displ = c(2, 3, 4, 5),
+    hwy = c(30, 28, 22, 18),
+    cty = c(20, 19, 15, 12),
+    class = c("compact", "compact", "suv", "pickup")
+  )
+  scene <- as_scene3d(
+    ggplot3(df, aes3(displ, hwy, z = cty, colour = class)) +
+      geom_point3d(size = 2.2, projection = "faces") +
+      labs3d(title = "3D scatterplot", subtitle = "Default gray", caption = "Source", x = "displ", y = "hwy", z = "cty") +
+      camera_3d(view = "ggplot3_default", azimuth = -37.5, elevation = 30, roll = 5) +
+      layout_3d(legend_position = "right") +
+      theme_3d_gray()
+  )
+
+  expect_equal(scene$labels$title, "3D scatterplot")
+  expect_equal(scene$axes$x$title, "displ")
+  expect_equal(scene$layout$legendArea$position, "right")
+  expect_equal(scene$view$camera$azimuth, -37.5)
+  expect_equal(scene$view$camera$roll, 5)
+  expect_equal(scene$panels$mode, "cube_faces")
+  expect_true("xy_min" %in% scene$panels$faces)
+  expect_equal(scene$layers[[2]]$type, "face_projection")
+  expect_equal(scene$layers[[2]]$sourceLayerId, scene$layers[[1]]$id)
+  expect_equal(scene$layers[[2]]$data$encoding, "source-reference")
+  expect_equal(length(scene$guides), 1)
+  expect_equal(scene$guides[[1]]$title, "class")
+  expect_true(!is.null(scene$guides[[1]]$entries[[1]]$glyph))
+})
+
+test_that("Stage4 point guides respect labs and show_legend", {
+  df <- data.frame(x = 1:4, y = 1:4, z = 1:4, group = c("a", "b", "a", "b"))
+
+  scene <- as_scene3d(
+    ggplot3(df, aes3(x, y, z = z, colour = group)) +
+      geom_point3d(projection = "faces") +
+      labs3d(colour = "cluster class")
+  )
+  expect_equal(length(scene$guides), 1)
+  expect_equal(scene$guides[[1]]$title, "cluster class")
+  expect_equal(sum(vapply(scene$layers, function(layer) identical(layer$type, "face_projection"), logical(1))), 1)
+
+  hidden <- as_scene3d(
+    ggplot3(df, aes3(x, y, z = z, colour = group)) +
+      geom_point3d(show_legend = FALSE)
+  )
+  expect_equal(length(hidden$guides), 0)
+})
+
+test_that("inside legend and render specs compile", {
+  df <- data.frame(x = 1:3, y = 2:4, z = 3:5, group = c("a", "b", "a"))
+  scene <- as_scene3d(
+    ggplot3(df, aes3(x, y, z = z, colour = group)) +
+      geom_point3d() +
+      theme_3d(
+        legend.position = "inside",
+        legend.position.inside = c(0.98, 0.95),
+        legend.justification = c(1, 1)
+      ) +
+      render_spec(width = 6, height = 4, units = "in", dpi = 150)
+  )
+
+  expect_equal(scene$layout$legendArea$position, "inside")
+  expect_equal(scene$layout$legendArea$inside$position, c(0.98, 0.95))
+  expect_equal(scene$render$pixelWidth, 900)
+  expect_equal(scene$render$pixelHeight, 600)
+  expect_equal(scene$render$cssWidth, 576)
+  expect_equal(scene$render$cssHeight, 384)
+})
+
+test_that("exported HTML contains unified figure layout hooks", {
+  scene <- as_scene3d(demo_scene3d() + labs3d(title = "Title"))
+  html_file <- tempfile(fileext = ".html")
+  export_html(scene, html_file)
+  html <- paste(readLines(html_file, warn = FALSE), collapse = "\n")
+  expect_true(grepl("figure-root", html, fixed = TRUE))
+  expect_true(grepl("scene-viewport", html, fixed = TRUE))
+  expect_true(grepl("layoutFigure", html, fixed = TRUE))
+  expect_true(grepl("inside-guide-layer", html, fixed = TRUE))
+  expect_true(grepl("clampedLeft", html, fixed = TRUE))
+})
+
+test_that("ggsave3 exports fixed-size PNG and hybrid SVG", {
+  skip_if(is.null(find_chromium()), "Chromium is not available")
+  df <- data.frame(x = 1:4, y = c(1, 3, 2, 4), z = c(2, 2, 3, 4), group = c("a", "b", "a", "b"))
+  p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
+    geom_point3d(size = 3, projection = "faces") +
+    labs3d(title = "Export title", caption = "Export caption") +
+    camera_3d(view = "ggplot3_default") +
+    theme_3d_gray()
+
+  png_file <- tempfile(fileext = ".png", tmpdir = getwd())
+  svg_file <- tempfile(fileext = ".svg", tmpdir = getwd())
+  on.exit(unlink(c(png_file, svg_file, file.path(getwd(), "ggplot3scene-three.module.js"))), add = TRUE)
+  ggsave3(png_file, p, width = 2, height = 1.5, units = "in", dpi = 100)
+  ggsave3(svg_file, p, width = 2, height = 1.5, units = "in", dpi = 100)
+
+  png_info <- system2("file", png_file, stdout = TRUE)
+  expect_true(grepl("200 x 150", png_info))
+  svg <- paste(readLines(svg_file, warn = FALSE), collapse = "\n")
+  expect_true(grepl("<svg", svg, fixed = TRUE))
+  expect_true(grepl('width="2in"', svg, fixed = TRUE))
+  expect_true(grepl('height="1.5in"', svg, fixed = TRUE))
+  expect_true(grepl('viewBox="0 0 200 150"', svg, fixed = TRUE))
+  expect_true(grepl("Export title", svg, fixed = TRUE))
+  expect_true(grepl("<text", svg, fixed = TRUE))
+})
+
+test_that("ggsave3 accepts view.json roundtrip input", {
+  skip_if(is.null(find_chromium()), "Chromium is not available")
+  df <- data.frame(x = 1:3, y = 1:3, z = 1:3)
+  p <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_point3d() +
+    camera_3d(azimuth = -20, elevation = 25, roll = 3, zoom = 1.2)
+  view_file <- tempfile(fileext = ".json")
+  png_file <- tempfile(fileext = ".png", tmpdir = getwd())
+  on.exit(unlink(c(view_file, png_file, file.path(getwd(), "ggplot3scene-three.module.js"))), add = TRUE)
+  scene <- as_scene3d(p)
+  jsonlite::write_json(scene$view, view_file, auto_unbox = TRUE, pretty = TRUE)
+  ggsave3(png_file, p, width = 2, height = 1.5, units = "in", dpi = 100, view = view_file)
+  expect_true(file.exists(png_file))
+  expect_true(grepl("200 x 150", system2("file", png_file, stdout = TRUE)))
+})
+
+test_that("default gray export stays visually close to reference smoke image", {
+  skip_if(is.null(find_chromium()), "Chromium is not available")
+  skip_if_not_installed("png")
+  skip_if_not_installed("ggplot2")
+  reference <- file.path(dirname(root), "default.png")
+  skip_if_not(file.exists(reference), "default.png reference is not available")
+
+  df <- as.data.frame(ggplot2::mpg)
+  p <- ggplot3(df, aes3(displ, hwy, z = cty, colour = class)) +
+    geom_point3d(size = 2.2, projection = "faces") +
+    labs3d(x = "displ", y = "hwy", z = "cty", colour = "class") +
+    view_default3d() +
+    theme_3d_gray()
+  png_file <- tempfile(fileext = ".png", tmpdir = getwd())
+  on.exit(unlink(c(png_file, file.path(getwd(), "ggplot3scene-three.module.js"))), add = TRUE)
+  ggsave3(png_file, p, width = 6.72, height = 4.8, units = "in", dpi = 100)
+
+  ref <- png::readPNG(reference)[,,1:3]
+  cur <- png::readPNG(png_file)[,,1:3]
+  expect_equal(dim(cur), dim(ref))
+  mean_abs <- mean(abs(ref - cur))
+  nonwhite <- mean(rowSums(abs(matrix(cur, ncol = 3) - 1)) > 0.05)
+  expect_lt(mean_abs, 0.10)
+  expect_gt(nonwhite, 0.10)
+  expect_lt(nonwhite, 0.45)
+})
+
+test_that("point performance policy warns and can sample large point clouds", {
+  df <- data.frame(x = 1:6, y = 1:6, z = 1:6, group = rep(c("a", "b"), each = 3))
+  p_warn <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
+    geom_point3d() +
+    performance_policy3d(max_json_points = 3)
+  expect_warning(as_scene3d(p_warn), "JSON export may be large")
+
+  p_sample <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
+    geom_point3d(max_points = 4, sampling = "stratified")
+  scene <- suppressWarnings(as_scene3d(p_sample))
+  expect_lte(length(scene$layers[[1]]$data$columns$x), 4)
+  expect_true(scene$layers[[1]]$metadata$performance$sampled)
+  expect_equal(scene$layers[[1]]$metadata$performance$originalPointCount, 6)
+  expect_equal(scene$layers[[1]]$metadata$performance$hoverMetadata$mode, "limited")
+  expect_false(scene$layers[[1]]$metadata$performance$hoverMetadata$included)
+  expect_equal(scene$metadata$performancePolicy$maxJsonPoints, 50000)
 })
 
 test_that("write_scene_json and export_html write files", {
@@ -660,6 +835,35 @@ test_that("guide protocol compiles language-neutral legends and colorbars", {
   expect_false(inherits(scene$guides[[1]], "ggplot3scene_guide"))
 })
 
+test_that("guides3d named guides override aesthetics and sort by order", {
+  df <- data.frame(x = 1:3, y = 1:3, z = 1:3)
+
+  p <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_point3d() +
+    guides3d(
+      colour = guide_legend3d(
+        title = "cluster",
+        labels = c("A", "B"),
+        values = c("#3366CC", "#CC6633"),
+        order = 2
+      ),
+      fill = guide_colourbar3d(
+        title = "density",
+        domain = c(0, 1),
+        palette = c("#FFFFFF", "#4477AA"),
+        order = 1
+      )
+    )
+
+  scene <- as_scene3d(p)
+  expect_equal(vapply(scene$guides, `[[`, numeric(1), "order"), c(1, 2))
+  expect_equal(scene$guides[[1]]$type, "colorbar")
+  expect_equal(scene$guides[[1]]$aesthetic, "fill")
+  expect_equal(scene$guides[[1]]$id, "guide-fill")
+  expect_equal(scene$guides[[2]]$type, "legend")
+  expect_equal(scene$guides[[2]]$aesthetic, "colour")
+})
+
 test_that("coord_umap3d compiles to positive xy grid", {
   df <- data.frame(UMAP1 = c(-3, 2), UMAP2 = c(-1, 4), z = 0)
 
@@ -858,7 +1062,8 @@ test_that("exported HTML contains ABS renderer builder", {
 
   expect_true(grepl("buildAbsAnnotations", html, fixed = TRUE))
   expect_true(grepl("unprojectScreenAtDepth", html, fixed = TRUE))
-  expect_true(grepl("addAxisWithArrow", html, fixed = TRUE))
+  expect_true(grepl("addAxisEdgeWithArrow", html, fixed = TRUE))
+  expect_true(grepl("selectAxisEdges", html, fixed = TRUE))
   expect_true(grepl("createAbsLabelSprite", html, fixed = TRUE))
   expect_true(grepl("writeRibbonSegment", html, fixed = TRUE))
   expect_true(grepl("MeshBasicMaterial", html, fixed = TRUE))

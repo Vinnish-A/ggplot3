@@ -10,25 +10,35 @@ as_scene3d <- function(plot) {
   }
 
   theme <- resolve_theme3d(plot$theme)
-  compiled_layers <- vector("list", length(plot$layers))
+  compiled_layers <- list()
   for (i in seq_along(plot$layers)) {
     layer <- plot$layers[[i]]
-    compiled_layers[[i]] <- switch(
+    compiled_layer <- switch(
       layer$type,
-      point_cloud = compile_point_cloud_layer(plot, layer, i, theme),
-      polyline3d = compile_polyline3d_layer(plot, layer, i, theme),
-      surface_grid = compile_surface_grid_layer(layer, i, theme),
-      surface_mesh = compile_surface_mesh_layer(layer, i, theme),
-      surface_stat = compile_surface_stat_layer(plot, layer, i, theme),
-      contour_stack = compile_contour_stack_layer(layer, i, theme),
-      ridgeline_stack = compile_ridgeline_stack_layer(layer, i, theme),
-      face_projection = compile_face_projection_layer(plot, layer, i, theme),
-      abs_annotation = compile_abs_annotation_layer(plot, layer, i, theme),
+      point_cloud = compile_point_cloud_layer(plot, layer, length(compiled_layers) + 1L, theme),
+      polyline3d = compile_polyline3d_layer(plot, layer, length(compiled_layers) + 1L, theme),
+      surface_grid = compile_surface_grid_layer(layer, length(compiled_layers) + 1L, theme),
+      surface_mesh = compile_surface_mesh_layer(layer, length(compiled_layers) + 1L, theme),
+      surface_stat = compile_surface_stat_layer(plot, layer, length(compiled_layers) + 1L, theme),
+      contour_stack = compile_contour_stack_layer(layer, length(compiled_layers) + 1L, theme),
+      ridgeline_stack = compile_ridgeline_stack_layer(layer, length(compiled_layers) + 1L, theme),
+      face_projection = compile_face_projection_layer(plot, layer, length(compiled_layers) + 1L, theme),
+      abs_annotation = compile_abs_annotation_layer(plot, layer, length(compiled_layers) + 1L, theme),
       stop("Unsupported layer type: ", layer$type, call. = FALSE)
     )
+    compiled_layers[[length(compiled_layers) + 1L]] <- compiled_layer
+    if (identical(layer$type, "point_cloud") && !is.null(layer$params$projection)) {
+      compiled_layers[[length(compiled_layers) + 1L]] <- compile_source_point_face_projection_layer(
+        compiled_layer,
+        layer$params$projection,
+        length(compiled_layers) + 1L
+      )
+    }
   }
   bounds <- compute_scene_bounds(compiled_layers)
   coord_protocol <- compile_coord_protocol(plot$coord, bounds)
+  camera_protocol <- compile_camera_view(plot$camera, plot$coord, bounds)
+  guides <- compile_scene3d_guides(plot$guides, plot, compiled_layers)
 
   scene <- list(
     schemaVersion = "0.1.0",
@@ -43,23 +53,23 @@ as_scene3d <- function(plot) {
       clip = plot$coord$clip
     ),
     layers = compiled_layers,
-    camera = list(
-      projection = plot$coord$projection,
-      position = unname(plot$coord$position),
-      target = unname(plot$coord$target),
-      up = unname(plot$coord$up),
-      zoom = plot$coord$zoom
-    ),
+    camera = camera_protocol$camera,
+    view = camera_protocol$view,
     axes = list(
-      x = list(visible = TRUE, title = "x"),
-      y = list(visible = TRUE, title = "y"),
-      z = list(visible = TRUE, title = "z"),
+      x = list(visible = TRUE, title = plot$labels$x %||% "x"),
+      y = list(visible = TRUE, title = plot$labels$y %||% "y"),
+      z = list(visible = TRUE, title = plot$labels$z %||% "z"),
       grid = coord_protocol$grid,
       style = coord_protocol$axis$style,
       labelPlacement = coord_protocol$axis$labelPlacement,
       tickPlacement = coord_protocol$axis$tickPlacement
     ),
-    guides = compile_scene3d_guides(plot$guides),
+    panels = compile_panel_protocol(plot$camera, theme),
+    guides = guides,
+    labels = compile_labels3d(plot$labels),
+    layout = compile_layout3d(plot$layout, theme),
+    render = if (is.null(plot$render)) NULL else strip_classes(plot$render),
+    performance = strip_classes(plot$performance),
     lights = list(
       ambient = theme$light$ambient,
       key = theme$light$key
@@ -67,7 +77,8 @@ as_scene3d <- function(plot) {
     theme = theme,
     metadata = list(
       generator = "ggplot3scene-r",
-      backendVersion = "0.0.1"
+      backendVersion = "0.0.1",
+      performancePolicy = strip_classes(plot$performance)
     )
   )
   scene
@@ -86,8 +97,11 @@ compile_point_cloud_layer <- function(plot, layer, layer_index, theme) {
     stop("point_cloud layer requires data.", call. = FALSE)
   }
   data <- as.data.frame(data)
+  original_n <- nrow(data)
 
   mapping <- merge_mapping(as_mapping(plot$mapping), as_mapping(layer$mapping))
+  data <- apply_point_performance_policy(data, mapping, layer, plot$performance)
+  output_n <- nrow(data)
   for (required in c("x", "y", "z")) {
     if (is.null(mapping[[required]])) {
       stop("point_cloud layer requires mapping for x, y, and z; missing ", required, ".", call. = FALSE)
@@ -131,7 +145,73 @@ compile_point_cloud_layer <- function(plot, layer, layer_index, theme) {
       type = point_theme$type %||% "points",
       sizeUnit = point_theme$sizeUnit %||% "screen",
       depthTest = point_theme$depthTest %||% TRUE
+    ),
+    guide = compile_point_colour_guide(data, mapping, layer$params$colour, default_color, plot$labels, layer$params$show_legend),
+    metadata = list(
+      performance = list(
+        originalPointCount = original_n,
+        emittedPointCount = output_n,
+        sampled = output_n < original_n,
+        sampling = layer$params$sampling,
+        hoverMetadata = list(mode = "limited", included = FALSE)
+      ),
+      rasterize = list(
+        mode = layer$params$rasterize,
+        threshold = layer$params$rasterize_threshold
+      )
     )
+  )
+}
+
+apply_point_performance_policy <- function(data, mapping, layer, policy) {
+  n <- nrow(data)
+  threshold <- getOption("ggplot3scene.max_json_points", policy$maxJsonPoints %||% 50000L)
+  if (n > threshold) {
+    warning("point_cloud layer has ", n, " points; JSON export may be large.", call. = FALSE)
+  }
+  max_points <- layer$params$max_points
+  if (is.null(max_points) || n <= max_points || identical(layer$params$sampling, "none")) {
+    return(data)
+  }
+  if (identical(layer$params$sampling, "stratified")) {
+    colour_mapping <- mapping$colour %||% mapping$color
+    if (!is.null(colour_mapping) && colour_mapping %in% names(data)) {
+      groups <- split(seq_len(n), as.character(data[[colour_mapping]]))
+      per_group <- max(1L, floor(max_points / length(groups)))
+      idx <- unlist(lapply(groups, function(values) {
+        if (length(values) <= per_group) values else sample(values, per_group)
+      }), use.names = FALSE)
+      if (length(idx) < max_points) {
+        rest <- setdiff(seq_len(n), idx)
+        idx <- c(idx, sample(rest, min(length(rest), max_points - length(idx))))
+      }
+      return(data[sort(idx[seq_len(min(length(idx), max_points))]), , drop = FALSE])
+    }
+  }
+  idx <- sort(sample(seq_len(n), max_points))
+  data[idx, , drop = FALSE]
+}
+
+compile_source_point_face_projection_layer <- function(source_layer, projection, layer_index) {
+  list(
+    id = paste0("layer-", layer_index),
+    type = "face_projection",
+    name = paste0(source_layer$name, " face projection"),
+    visible = isTRUE(projection$visible),
+    space = list(type = "face_plane"),
+    sourceLayerId = source_layer$id,
+    faces = unname(projection$faces),
+    offset = projection$offset,
+    clip = TRUE,
+    data = list(kind = "source_point_cloud", encoding = "source-reference"),
+    style = list(
+      type = "source_points",
+      material = "unlit",
+      alphaMultiplier = projection$alphaMultiplier,
+      sizeMultiplier = projection$sizeMultiplier,
+      depthWrite = FALSE
+    ),
+    guide = list(show = FALSE)
   )
 }
 
@@ -297,7 +377,7 @@ resolve_point_colors <- function(data, mapping, explicit_colour, n, default_colo
     values <- data[[colour_mapping]]
     if (is.factor(values) || is.character(values)) {
       levels <- sort(unique(as.character(values)))
-      palette <- grDevices::hcl.colors(max(3L, length(levels)), "Dark 3")
+      palette <- ggplot3_hue_palette(length(levels))
       color_map <- stats::setNames(palette[seq_along(levels)], levels)
       return(unname(color_map[as.character(values)]))
     }
@@ -316,6 +396,67 @@ resolve_point_colors <- function(data, mapping, explicit_colour, n, default_colo
   }
 
   rep(default_color, n)
+}
+
+compile_point_colour_guide <- function(data, mapping, explicit_colour, default_color = "#3366CC",
+                                       labels = list(), show_legend = TRUE) {
+  if (!isTRUE(show_legend) || !is.null(explicit_colour)) {
+    return(NULL)
+  }
+  colour_mapping <- mapping$colour %||% mapping$color
+  if (is.null(colour_mapping) || !colour_mapping %in% names(data)) {
+    return(NULL)
+  }
+  values <- data[[colour_mapping]]
+  title <- labels$colour %||% labels$color %||% colour_mapping
+  if (is.factor(values) || is.character(values)) {
+    levels <- sort(unique(as.character(values)))
+    palette <- ggplot3_hue_palette(length(levels))
+    return(list(
+      id = paste0("guide-colour-", title),
+      type = "legend",
+      aesthetic = "colour",
+      title = title,
+      order = 1,
+      entries = unname(lapply(seq_along(levels), function(i) {
+        list(
+          label = levels[[i]],
+          value = palette[[i]],
+          glyph = list(type = "point", colour = palette[[i]], size = 4, alpha = 1)
+        )
+      })),
+      materialMode = "unlit"
+    ))
+  }
+  if (is.numeric(values) && all(is.finite(values))) {
+    palette <- grDevices::hcl.colors(7L, "Blue-Red 3")
+    domain <- unname(as.numeric(range(values)))
+    return(list(
+      id = paste0("guide-colour-", title),
+      type = "colorbar",
+      aesthetic = "colour",
+      title = title,
+      order = 1,
+      domain = domain,
+      palette = unname(palette),
+      bar = list(stops = unname(lapply(seq_along(palette), function(i) {
+        list(t = (i - 1) / (length(palette) - 1), colour = palette[[i]])
+      }))),
+      breaks = unname(lapply(pretty(domain, n = 3), function(value) {
+        list(value = unname(as.numeric(value)), label = format(value))
+      })),
+      materialMode = "unlit"
+    ))
+  }
+  NULL
+}
+
+ggplot3_hue_palette <- function(n) {
+  if (n <= 0L) {
+    return(character())
+  }
+  hues <- seq(15, 375, length.out = n + 1L)[seq_len(n)]
+  grDevices::hcl(h = hues, c = 100, l = 65)
 }
 
 compute_scene_bounds <- function(layers) {
@@ -388,6 +529,9 @@ compute_layer_bounds <- function(layer) {
 
   if (identical(layer$type, "face_projection")) {
     data <- layer$data
+    if (identical(data$kind, "source_point_cloud")) {
+      return(NULL)
+    }
     axes <- layer$axes
     mins <- c(x = 0, y = 0, z = 0)
     maxs <- c(x = 0, y = 0, z = 0)
@@ -435,6 +579,61 @@ compute_polyline_bounds <- function(polylines) {
   )
 }
 
+compile_labels3d <- function(labels) {
+  defaults <- list(title = NULL, subtitle = NULL, caption = NULL)
+  strip_classes(merge_list_simple(defaults, labels %||% list()))
+}
+
+compile_layout3d <- function(layout, theme) {
+  out <- strip_classes(layout %||% layout_3d())
+  legend_position <- theme$legend$position %||% out$legendArea$position %||% "right"
+  out$legendArea$position <- legend_position
+  out$legendArea$inside <- list(
+    position = unname(as.numeric(theme$legend$position.inside %||% c(0.98, 0.98))),
+    justification = unname(as.numeric(theme$legend$justification %||% c(1, 1)))
+  )
+  out$legendArea$direction <- theme$legend$direction %||% "vertical"
+  out$legendArea$box <- theme$legend$box %||% "vertical"
+  out$legendArea$boxSpacing <- theme$legend$box.spacing %||% 6
+  out
+}
+
+compile_panel_protocol <- function(camera, theme) {
+  panel_mode <- camera$panels %||% "visible"
+  faces <- switch(
+    panel_mode,
+    visible = c("xy_min", "xy_max", "xz_min", "xz_max", "yz_min", "yz_max"),
+    all = c("xy_min", "xy_max", "xz_min", "xz_max", "yz_min", "yz_max"),
+    none = character(),
+    dynamic = c("xy_min", "xy_max", "xz_min", "xz_max", "yz_min", "yz_max"),
+    c("xy_min", "xy_max", "xz_min", "xz_max", "yz_min", "yz_max")
+  )
+  list(
+    mode = "cube_faces",
+    faces = unname(faces),
+    dynamicBackFaces = panel_mode %in% c("visible", "dynamic"),
+    style = list(
+      fill = theme_value_fill(theme$scene$face, "#E5E5E5"),
+      colour = theme_value_colour(theme$scene$face, NA),
+      alpha = theme$scene$face$alpha %||% 1
+    )
+  )
+}
+
+theme_value_fill <- function(value, fallback) {
+  if (is.character(value) && length(value) == 1L) {
+    return(value)
+  }
+  value$fill %||% fallback
+}
+
+theme_value_colour <- function(value, fallback) {
+  if (is.character(value) && length(value) == 1L) {
+    return(value)
+  }
+  value$colour %||% value$color %||% fallback
+}
+
 compile_coord_protocol <- function(coord, bounds) {
   data_domain <- list(
     x = c(bounds$min[["x"]], bounds$max[["x"]]),
@@ -476,7 +675,10 @@ compile_coord_protocol <- function(coord, bounds) {
         lengthFraction = coord$axis$length_fraction,
         arrows = coord$axis$arrows,
         labels = coord$axis$labels,
-        titles = coord$axis$titles
+        titles = coord$axis$titles,
+        titlePosition = coord$axis$title_position,
+        tickOffset = coord$axis$tick_offset,
+        titleOffset = coord$axis$title_offset
       ),
       labelPlacement = coord$axis$label_placement,
       tickPlacement = coord$axis$tick_placement

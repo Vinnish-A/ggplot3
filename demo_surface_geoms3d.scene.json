@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614224347",
+  "sceneId": "scene-20260615010621",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -145,7 +145,41 @@
     "position": [2.1, -2.4, 1.5],
     "target": [0, 0, 0],
     "up": [0, 0, 1],
-    "zoom": 1
+    "zoom": 1,
+    "fov": 35,
+    "near": 0.0038,
+    "far": 3750
+  },
+  "view": {
+    "camera": {
+      "view": "coord_3d_legacy",
+      "projection": "orthographic",
+      "azimuth": -37.5,
+      "elevation": 30,
+      "roll": 0,
+      "fov": 35,
+      "zoom": 1,
+      "distance": null,
+      "target": [0, 0, 0],
+      "targetData": [0, 0, 0],
+      "up": [0, 0, 1],
+      "lockUp": true,
+      "fit": true,
+      "fitMethod": "bbox",
+      "padding": 0.08,
+      "near": 0.0038,
+      "far": 3750,
+      "clipping": "auto",
+      "dataAspect": null,
+      "zExaggeration": 1,
+      "panels": "visible",
+      "projectionFaces": null,
+      "orbit": true,
+      "minElevation": -89,
+      "maxElevation": 89,
+      "name": null,
+      "position": [2.1, -2.4, 1.5]
+    }
   },
   "axes": {
     "x": {
@@ -187,7 +221,56 @@
     "labelPlacement": "auto",
     "tickPlacement": "auto"
   },
+  "panels": {
+    "mode": "cube_faces",
+    "faces": ["xy_min", "xz_min", "yz_max"],
+    "style": {
+      "fill": "#E5E5E5",
+      "colour": null,
+      "alpha": 1
+    }
+  },
   "guides": [],
+  "labels": {
+    "title": null,
+    "subtitle": null,
+    "caption": null
+  },
+  "layout": {
+    "width": null,
+    "height": null,
+    "units": "px",
+    "plotMargin": {
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "left": 8,
+      "unit": "px"
+    },
+    "titleArea": {
+      "enabled": true
+    },
+    "legendArea": {
+      "position": "right",
+      "spacing": 12,
+      "inside": {
+        "position": [0.98, 0.98],
+        "justification": [1, 1]
+      },
+      "direction": "vertical",
+      "box": "vertical",
+      "boxSpacing": 6
+    },
+    "sceneViewport": {
+      "fit": "remaining"
+    }
+  },
+  "render": null,
+  "performance": {
+    "maxJsonPoints": 50000,
+    "maxVectorPoints": 5000,
+    "defaultLargeData": "warn"
+  },
   "lights": {
     "ambient": {
       "color": "#FFFFFF",
@@ -200,19 +283,114 @@
     }
   },
   "theme": {
+    "plot": {
+      "background": {
+        "fill": "#FFFFFF",
+        "colour": null,
+        "linewidth": 0,
+        "alpha": 1
+      },
+      "title": {
+        "size": 13.75,
+        "colour": "#222222",
+        "face": "bold",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      },
+      "subtitle": {
+        "size": 11,
+        "colour": "#444444",
+        "face": "plain",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      },
+      "caption": {
+        "size": 9.02,
+        "colour": "#555555",
+        "face": "plain",
+        "hjust": 1,
+        "family": "",
+        "alpha": 1
+      },
+      "title.position": "plot"
+    },
     "scene": {
-      "background": "#FFFFFF"
+      "background": "#FFFFFF",
+      "face": {
+        "fill": "#E5E5E5",
+        "colour": null,
+        "alpha": 1
+      },
+      "box": {
+        "colour": null,
+        "linewidth": 0,
+        "alpha": 1
+      }
     },
     "axis": {
       "grid.major": "#D9DDE3",
       "line": "#4B5563",
-      "text": "#374151"
+      "text": "#374151",
+      "title": {
+        "size": 11,
+        "colour": "#222222",
+        "face": "plain",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      }
+    },
+    "legend": {
+      "position": "right",
+      "position.inside": [0.98, 0.98],
+      "justification": [1, 1],
+      "direction": "vertical",
+      "box": "vertical",
+      "box.spacing": 6,
+      "background": {
+        "fill": null,
+        "colour": null,
+        "linewidth": 0,
+        "alpha": 1
+      },
+      "key": {
+        "fill": "#E5E5E5",
+        "colour": null,
+        "linewidth": 0,
+        "alpha": 1
+      },
+      "text": {
+        "size": 8.8,
+        "colour": "#222222",
+        "face": "plain",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      },
+      "title": {
+        "size": 11,
+        "colour": "#222222",
+        "face": "plain",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      },
+      "margin": {
+        "top": 6,
+        "right": 6,
+        "bottom": 6,
+        "left": 6,
+        "unit": "px"
+      }
     },
     "material": {
       "point": {
         "type": "points",
         "sizeUnit": "screen",
         "depthTest": true,
+        "depthWrite": true,
         "color": "#3366CC",
         "size": 4,
         "opacity": 1
@@ -262,6 +440,11 @@
   },
   "metadata": {
     "generator": "ggplot3scene-r",
-    "backendVersion": "0.0.1"
+    "backendVersion": "0.0.1",
+    "performancePolicy": {
+      "maxJsonPoints": 50000,
+      "maxVectorPoints": 5000,
+      "defaultLargeData": "warn"
+    }
   }
 }

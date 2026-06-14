@@ -24,6 +24,19 @@
       grid-template-rows: auto 1fr;
       background: #ffffff;
     }
+    body.export-mode #app {
+      grid-template-rows: 1fr;
+    }
+    body.export-mode #toolbar {
+      display: none;
+    }
+    body.svg-raster-mode #plot-title,
+    body.svg-raster-mode #plot-subtitle,
+    body.svg-raster-mode #plot-caption,
+    body.svg-raster-mode #outside-guide-layer,
+    body.svg-raster-mode #inside-guide-layer {
+      visibility: hidden;
+    }
     #toolbar {
       display: flex;
       align-items: center;
@@ -54,10 +67,35 @@
       font-size: 12px;
       white-space: nowrap;
     }
-    #viewport {
+    #figure-root {
+      position: relative;
+      box-sizing: border-box;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      background: #ffffff;
+      overflow: hidden;
+    }
+    #plot-title,
+    #plot-subtitle,
+    #plot-caption {
+      display: none;
+      min-width: 0;
+    }
+    #figure-body {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      gap: 12px;
+    }
+    #scene-viewport {
       position: relative;
       min-width: 0;
       min-height: 0;
+      overflow: hidden;
     }
     #abs-label-layer {
       position: absolute;
@@ -66,10 +104,20 @@
       overflow: hidden;
       z-index: 1;
     }
-    #guide-layer {
+    #outside-guide-layer {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      align-content: start;
+      justify-content: start;
+      gap: 8px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    #inside-guide-layer {
       position: absolute;
-      right: 14px;
-      top: 14px;
+      left: 0;
+      top: 0;
       display: grid;
       gap: 8px;
       max-width: min(260px, calc(100vw - 28px));
@@ -78,7 +126,7 @@
     }
     .scene3d-guide {
       border: 1px solid rgba(209, 213, 219, 0.92);
-      border-radius: 6px;
+      border-radius: 0;
       background: rgba(255, 255, 255, 0.9);
       color: #111827;
       padding: 8px;
@@ -166,17 +214,25 @@
       <button id="export-view" type="button">Export view.json</button>
       <div id="status">Loading renderer</div>
     </div>
-    <div id="viewport">
-      <div id="fallback">This prototype loads three.js from a CDN. The Scene3D data is embedded in this file, but first render requires network access unless a local vendor bundle is added later.</div>
-      <div id="abs-label-layer"></div>
-      <div id="guide-layer"></div>
+    <div id="figure-root">
+      <div id="plot-title"></div>
+      <div id="plot-subtitle"></div>
+      <div id="figure-body">
+        <div id="scene-viewport">
+          <div id="fallback">This prototype loads three.js from a CDN. The Scene3D data is embedded in this file, but first render requires network access unless a local vendor bundle is added later.</div>
+          <div id="abs-label-layer"></div>
+          <div id="inside-guide-layer"></div>
+        </div>
+        <div id="outside-guide-layer"></div>
+      </div>
+      <div id="plot-caption"></div>
     </div>
   </div>
 
   <script id="scene3d-data" type="application/json">
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614224337",
+  "sceneId": "scene-20260615010616",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -231,7 +287,7 @@
           "x": [2.4888, 2.6225, -1.2832, 1.9827, 0.8505, 0.1146, 1.4195, -2.192, 0.942, 1.2304, -0.2535, 1.3147, 2.608, -1.4674, -0.2262, 2.6401, 2.8694, -2.2951, -0.15, 0.362, 2.4242, -2.1677, 2.9334, 2.68, -2.5054, 0.0853, -0.6588, 2.4344, -0.3182, 2.016, 1.4256, 1.8663, -0.6714, 1.111, -2.9763, 1.9975, -2.956, -1.754, 2.4396, 0.6707, -0.7226, -0.3854, -2.7754, 2.8412, -0.4095, 2.7455, 2.3265, 0.8399, 2.8258, 0.713, -0.9994, -0.9195, -0.6091, 1.7082, -2.7664, 1.4928, 1.0637, -1.9724, -1.4335, 0.0865, 1.0536, 2.8969, 1.5573, 0.3989, 2.0981, -1.8632, -1.3723, 1.969, 1.1592, -1.5567, -2.7421, -2.1571, -1.7017, -0.1236, -1.8155, 1.3161, -2.9527, -0.7471, 0.0864, -2.9906, 0.4896, -2.0526, -0.8458, 0.8738, 1.6549, 0.3819, -1.5978, -2.4601, -2.4863, -1.1687, 1.0046, -2.9986, -1.7486, 2.5982, 2.5539, 1.4046, -1.0016, 0.0904, 1.4638, 0.715, 0.7575, -1.6971, -1.7006, -0.6663, 2.6547, 2.7756, 1.4391, 1.3995, 0.2146, -2.9864, 0.6536, 2.0208, 1.5091, -0.2836, 0.2147, 0.2243, -2.9917, -0.866, 0.6728, 1.9737, -0.8597, -0.5362, 0.4409, 0.5381, 1.3179, -0.6302, 2.5152, 2.7754, -1.5989, 1.347, 2.4218, 0.6208, 0.789, 2.6243, 2.1029, 0.4789, 1.9284, -2.3177, 1.587, 0.7417, -2.1093, -2.5184, -0.2156, 1.6762, 1.4012, 1.9034, -1.979, 2.6683, -1.2383, -2.1056, 1.3163, -1.0555, 1.6729, -0.6334, 1.0716, 1.655, -1.8728, -2.8255, -2.1857, 1.081, 2.6089, 0.303, 0.6106, -1.818, 0.2114, -1.9227, -0.2887, -1.0977, -2.303, -1.8834, 1.3784, -0.5288, -0.5157, -0.1181, -0.435, -2.1811, 1.9481, 0.5538, 1.7664, 1.6142, 2.5083, 2.1758, -1.0981, -1.4444, 1.4536, 1.4842, 2.5074, 1.7591, -2.2, -1.2735, -1.8319, 1.7047, -2.2268, -2.2255, -2.5665, -2.6812, 0.1912, -2.3262, 1.4591, 1.3879, 2.3107, 0.1027, 2.1116, -0.3432, -2.0527, -0.3461, 2.8064, -0.0925, -1.4852, -1.4419, 0.2521, 0.8993, -0.9815, -2.6343, -0.2921, 2.0325, 0.4478, -0.8799, 0.2846, 2.3563],
           "y": [-0.0601, -1.9702, 0.2582, 2.7688, -1.1179, 1.9231, -1.1577, -1.8873, -2.7099, -1.526, -0.8934, -2.0459, -1.1754, -2.8947, 2.9793, 1.8264, -2.4805, 2.2196, 0.3275, -0.4717, -2.5942, 0.3686, -2.5757, -1.7316, 0.2977, -0.1081, -2.0432, -2.1025, -0.0044, 2.6434, -0.9946, -1.8694, -1.3817, 0.1845, -2.8713, 1.7926, -2.338, 0.2388, 0.4274, 0.7137, 1.2891, -2.2602, -1.1337, 2.6744, 0.0002, -2.1886, 2.2155, -1.7697, 2.5503, 2.3205, -2.1822, 1.7121, -0.2802, -2.1855, 2.3113, -0.9797, -1.0844, -0.5773, -0.1255, -0.7926, -0.2059, -2.7006, -1.8759, 2.896, -1.0304, -1.974, -0.0705, -2.8879, -0.9631, -2.822, 2.2034, 1.3902, -1.1084, -0.6813, -1.0053, -2.4613, 1.5423, 0.6178, -2.1276, -2.8049, -0.0974, -0.3326, -2.6377, -1.035, 2.2706, 2.5836, -0.6469, -2.0469, -1.0803, -1.1582, -2.3531, 2.876, -0.0186, -2.4416, -1.7294, 2.583, -1.2189, 0.9193, 2.4064, 2.9448, -0.418, -0.6373, -2.1485, -1.3212, 0.3889, 2.6108, -0.8496, 2.052, 1.3345, 1.5044, 2.5439, -2.9857, -2.0374, -0.6044, 1.0519, -0.1178, 0.203, -1.0983, 1.8885, -1.2467, -0.5452, -2.4545, 1.7916, -0.8413, -2.7571, -2.7535, 2.7266, -0.76, 1.8385, 2.4604, -0.3595, 0.458, -2.558, -2.0122, 1.4393, -0.1457, 1.1131, 2.7091, -0.0152, -0.177, 0.3612, 0.9151, -1.3226, 2.8794, 0.8632, 0.4955, 0.6952, 2.5508, -0.6599, -1.2725, -2.4556, -1.0678, 1.5496, -2.3735, 1.2617, 2.7989, -1.7911, -2.3491, -2.6676, 1.9783, 0.4872, -0.1794, -0.8099, -1.3193, 0.5983, 1.9114, -2.413, 2.7821, -1.9876, -2.4835, 2.1673, 0.1487, 0.9409, -1.6229, 1.3274, -0.0555, 2.7915, 2.4417, 0.3075, -2.5464, -2.8638, 0.0794, 0.7844, -0.4874, 2.2756, -2.3521, 2.8817, -1.4102, -2.4943, -0.6846, -2.2506, 0.4893, -1.5591, 1.3313, -2.1244, -2.083, -1.4447, 1.6673, -0.4412, -2.6397, -2.311, -0.1035, 2.875, 1.8691, 0.2575, -2.5658, -0.2011, -0.9606, 1.1395, 0.0849, 0.0895, 0.2731, -0.3153, -2.4967, 2.5808, -2.9013, -0.5154, -1.6381, -2.4022, -0.1025],
           "z": [0.6526, -0.2351, -0.9897, -0.9816, 0.3803, -0.0603, 0.4588, 0.225, -0.8135, 0.1923, -0.1898, -0.3287, 0.0517, 0.9086, 0.189, -0.1684, -0.0504, 0.4498, -0.1122, 0.2024, -0.6489, -0.6517, -0.0235, 0.0785, -0.7337, 0.3307, 0.4006, -0.3326, -0.2284, -0.9094, 0.4076, -0.2755, -0.2607, 0.9037, 0.3143, -0.3243, 0.0395, -0.9498, 0.4655, 0.4238, -0.0791, 0.3554, -0.1055, -0.4863, -0.4046, -0.0957, -0.3398, -0.17, -0.5818, -0.4384, 0.5517, 0.1175, -0.5309, -0.5195, 0.1997, 0.7128, 0.4651, -0.9204, -0.817, 0.2052, 0.9498, -0.4186, -0.3686, -0.3005, 0.4499, 0.4175, -0.6828, -0.9905, 0.2697, 0.9821, 0.1475, -0.0961, -0.5397, 0.1697, -0.5347, -0.8096, -0.0253, -0.4504, -0.0339, -0.0531, 0.4675, -0.7464, 0.6602, 0.4797, -0.6593, -0.3231, -0.7398, 0.4079, -0.4366, -0.373, -0.6034, 0.0465, -1.1082, -0.4711, -0.0171, -0.8863, -0.3845, 0.0743, -0.8859, -0.5174, 0.5698, -0.7746, 0.5477, -0.1527, 0.65, -0.4076, 0.792, -0.4523, -0.0504, -0.0185, -0.413, -0.9406, -0.5417, -0.2119, 0.2243, 0.212, -0.3127, -0.5035, -0.2869, 0.2297, -0.6504, 0.4754, -0.1456, 0.2079, -0.8247, 0.5785, -0.3976, 0.0576, 0.2749, -0.595, 0.704, 0.4219, -0.5043, -0.3159, 0.0585, 0.5984, 0.3791, 0.7657, 0.9648, 0.4758, -0.9049, -0.4865, -0.1107, -1.0008, 0.6223, 0.8023, -0.4777, -0.5449, -0.7966, -0.211, -0.5534, -0.4088, 0.1698, 0.2283, 0.4407, -1.0214, 0.1754, 0.0851, 0.7428, -0.1355, 0.7394, 0.1643, 0.4537, -0.0747, 0.1499, 0.2874, 0.1758, 0.905, 0.4688, 0.8353, -0.5129, -0.5351, -0.2307, -0.0598, -0.1351, -0.6867, -0.8202, -0.3734, 0.9042, -0.7155, -0.4089, 0.7156, -0.6236, -0.8706, -0.7128, -0.8214, -0.5729, 0.2357, 0.8222, -0.9698, 0.5231, 0.8374, -0.2088, -0.2782, 0.1927, 0.131, -0.2387, 0.0958, 0.8228, -0.6796, -0.4026, -0.0725, -0.8152, 0.0277, -0.7503, 0.2909, 0.2555, -0.0003, -0.3982, -1.0079, 0.4908, 0.6903, -0.8468, 0.2027, 0.239, -0.7627, 0.1282, 0.0219, -0.3492, 0.8763],
-          "color": ["#50A315", "#50A315", "#E16A86", "#50A315", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#50A315", "#50A315", "#50A315", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#50A315", "#50A315", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#50A315", "#50A315", "#E16A86", "#50A315", "#50A315", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#50A315", "#E16A86", "#50A315", "#50A315", "#50A315", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#50A315", "#50A315", "#50A315", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#50A315", "#50A315", "#50A315", "#50A315", "#E16A86", "#50A315", "#50A315", "#50A315", "#50A315", "#50A315", "#50A315", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#50A315", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#50A315", "#E16A86", "#50A315", "#E16A86", "#50A315", "#50A315", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#50A315", "#50A315", "#E16A86", "#E16A86", "#50A315", "#E16A86", "#E16A86", "#E16A86", "#E16A86", "#50A315"],
+          "color": ["#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#00BFC4", "#00BFC4", "#F8766D", "#F8766D", "#00BFC4", "#F8766D", "#F8766D", "#F8766D", "#F8766D", "#00BFC4"],
           "size": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
           "alpha": [0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9]
         }
@@ -240,6 +296,52 @@
         "type": "points",
         "sizeUnit": "screen",
         "depthTest": true
+      },
+      "guide": {
+        "id": "guide-colour-group",
+        "type": "legend",
+        "aesthetic": "colour",
+        "title": "group",
+        "order": 1,
+        "entries": [
+          {
+            "label": "basin",
+            "value": "#F8766D",
+            "glyph": {
+              "type": "point",
+              "colour": "#F8766D",
+              "size": 4,
+              "alpha": 1
+            }
+          },
+          {
+            "label": "ridge",
+            "value": "#00BFC4",
+            "glyph": {
+              "type": "point",
+              "colour": "#00BFC4",
+              "size": 4,
+              "alpha": 1
+            }
+          }
+        ],
+        "materialMode": "unlit"
+      },
+      "metadata": {
+        "performance": {
+          "originalPointCount": 220,
+          "emittedPointCount": 220,
+          "sampled": false,
+          "sampling": "none",
+          "hoverMetadata": {
+            "mode": "limited",
+            "included": false
+          }
+        },
+        "rasterize": {
+          "mode": "auto",
+          "threshold": 50000
+        }
       }
     }
   ],
@@ -248,7 +350,41 @@
     "position": [1.8, -2.4, 1.6],
     "target": [0, 0, 0],
     "up": [0, 0, 1],
-    "zoom": 1
+    "zoom": 1,
+    "fov": 35,
+    "near": 0.0045,
+    "far": 4500
+  },
+  "view": {
+    "camera": {
+      "view": "coord_3d_legacy",
+      "projection": "orthographic",
+      "azimuth": -37.5,
+      "elevation": 30,
+      "roll": 0,
+      "fov": 35,
+      "zoom": 1,
+      "distance": null,
+      "target": [0, 0, 0],
+      "targetData": [0, 0, 0],
+      "up": [0, 0, 1],
+      "lockUp": true,
+      "fit": true,
+      "fitMethod": "bbox",
+      "padding": 0.08,
+      "near": 0.0045,
+      "far": 4500,
+      "clipping": "auto",
+      "dataAspect": null,
+      "zExaggeration": 1,
+      "panels": "visible",
+      "projectionFaces": null,
+      "orbit": true,
+      "minElevation": -89,
+      "maxElevation": 89,
+      "name": null,
+      "position": [1.8, -2.4, 1.6]
+    }
   },
   "axes": {
     "x": {
@@ -290,7 +426,87 @@
     "labelPlacement": "auto",
     "tickPlacement": "auto"
   },
-  "guides": [],
+  "panels": {
+    "mode": "cube_faces",
+    "faces": ["xy_min", "xz_min", "yz_max"],
+    "style": {
+      "fill": "#E5E5E5",
+      "colour": null,
+      "alpha": 1
+    }
+  },
+  "guides": [
+    {
+      "id": "guide-colour-group",
+      "type": "legend",
+      "aesthetic": "colour",
+      "title": "group",
+      "order": 1,
+      "entries": [
+        {
+          "label": "basin",
+          "value": "#F8766D",
+          "glyph": {
+            "type": "point",
+            "colour": "#F8766D",
+            "size": 4,
+            "alpha": 1
+          }
+        },
+        {
+          "label": "ridge",
+          "value": "#00BFC4",
+          "glyph": {
+            "type": "point",
+            "colour": "#00BFC4",
+            "size": 4,
+            "alpha": 1
+          }
+        }
+      ],
+      "materialMode": "unlit"
+    }
+  ],
+  "labels": {
+    "title": null,
+    "subtitle": null,
+    "caption": null
+  },
+  "layout": {
+    "width": null,
+    "height": null,
+    "units": "px",
+    "plotMargin": {
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "left": 8,
+      "unit": "px"
+    },
+    "titleArea": {
+      "enabled": true
+    },
+    "legendArea": {
+      "position": "right",
+      "spacing": 12,
+      "inside": {
+        "position": [0.98, 0.98],
+        "justification": [1, 1]
+      },
+      "direction": "vertical",
+      "box": "vertical",
+      "boxSpacing": 6
+    },
+    "sceneViewport": {
+      "fit": "remaining"
+    }
+  },
+  "render": null,
+  "performance": {
+    "maxJsonPoints": 50000,
+    "maxVectorPoints": 5000,
+    "defaultLargeData": "warn"
+  },
   "lights": {
     "ambient": {
       "color": "#FFFFFF",
@@ -303,19 +519,114 @@
     }
   },
   "theme": {
+    "plot": {
+      "background": {
+        "fill": "#FFFFFF",
+        "colour": null,
+        "linewidth": 0,
+        "alpha": 1
+      },
+      "title": {
+        "size": 13.75,
+        "colour": "#222222",
+        "face": "bold",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      },
+      "subtitle": {
+        "size": 11,
+        "colour": "#444444",
+        "face": "plain",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      },
+      "caption": {
+        "size": 9.02,
+        "colour": "#555555",
+        "face": "plain",
+        "hjust": 1,
+        "family": "",
+        "alpha": 1
+      },
+      "title.position": "plot"
+    },
     "scene": {
-      "background": "#FFFFFF"
+      "background": "#FFFFFF",
+      "face": {
+        "fill": "#E5E5E5",
+        "colour": null,
+        "alpha": 1
+      },
+      "box": {
+        "colour": null,
+        "linewidth": 0,
+        "alpha": 1
+      }
     },
     "axis": {
       "grid.major": "#D9DDE3",
       "line": "#4B5563",
-      "text": "#374151"
+      "text": "#374151",
+      "title": {
+        "size": 11,
+        "colour": "#222222",
+        "face": "plain",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      }
+    },
+    "legend": {
+      "position": "right",
+      "position.inside": [0.98, 0.98],
+      "justification": [1, 1],
+      "direction": "vertical",
+      "box": "vertical",
+      "box.spacing": 6,
+      "background": {
+        "fill": null,
+        "colour": null,
+        "linewidth": 0,
+        "alpha": 1
+      },
+      "key": {
+        "fill": "#E5E5E5",
+        "colour": null,
+        "linewidth": 0,
+        "alpha": 1
+      },
+      "text": {
+        "size": 8.8,
+        "colour": "#222222",
+        "face": "plain",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      },
+      "title": {
+        "size": 11,
+        "colour": "#222222",
+        "face": "plain",
+        "hjust": 0,
+        "family": "",
+        "alpha": 1
+      },
+      "margin": {
+        "top": 6,
+        "right": 6,
+        "bottom": 6,
+        "left": 6,
+        "unit": "px"
+      }
     },
     "material": {
       "point": {
         "type": "points",
         "sizeUnit": "screen",
         "depthTest": true,
+        "depthWrite": true,
         "color": "#3366CC",
         "size": 4,
         "opacity": 1
@@ -365,33 +676,45 @@
   },
   "metadata": {
     "generator": "ggplot3scene-r",
-    "backendVersion": "0.0.1"
+    "backendVersion": "0.0.1",
+    "performancePolicy": {
+      "maxJsonPoints": 50000,
+      "maxVectorPoints": 5000,
+      "defaultLargeData": "warn"
+    }
   }
 }
 </script>
 
   <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
+    import * as THREE from "./ggplot3scene-three.module.js";
 
     const sceneData = JSON.parse(document.getElementById("scene3d-data").textContent);
-    const viewport = document.getElementById("viewport");
+    const figureRoot = document.getElementById("figure-root");
+    const figureBody = document.getElementById("figure-body");
+    const viewport = document.getElementById("scene-viewport");
     const status = document.getElementById("status");
     const fallback = document.getElementById("fallback");
     const absLabelLayer = document.getElementById("abs-label-layer");
-    const guideLayer = document.getElementById("guide-layer");
+    const outsideGuideLayer = document.getElementById("outside-guide-layer");
+    const insideGuideLayer = document.getElementById("inside-guide-layer");
+    const titleEl = document.getElementById("plot-title");
+    const subtitleEl = document.getElementById("plot-subtitle");
+    const captionEl = document.getElementById("plot-caption");
 
     THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
-    buildGuides(sceneData.guides || []);
+    const figureLayout = layoutFigure(sceneData);
+    buildGuides(sceneData.guides || [], figureLayout);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(sceneData.theme?.scene?.background || "#ffffff");
+    scene.background = new THREE.Color(themeColor(sceneData.theme?.scene?.background, "#ffffff"));
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       preserveDrawingBuffer: true
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(sceneData.render?.devicePixelRatio || Math.min(window.devicePixelRatio || 1, 2));
     viewport.appendChild(renderer.domElement);
 
     const world = new THREE.Group();
@@ -424,19 +747,93 @@
       scene.add(light);
     }
 
-    function buildGuides(guides) {
-      guideLayer.innerHTML = "";
+    function layoutFigure(sceneData) {
+      const render = sceneData.render || {};
+      const layout = sceneData.layout || {};
+      const theme = sceneData.theme || {};
+      const labels = sceneData.labels || {};
+      const legendArea = layout.legendArea || {};
+      const legendPosition = theme.legend?.position || legendArea.position || "right";
+      const plotMargin = layout.plotMargin || { top: 8, right: 8, bottom: 8, left: 8 };
+
+      if (render.export === true) {
+        document.body.classList.add("export-mode");
+      }
+      if (render.svgRasterMode === true) {
+        document.body.classList.add("svg-raster-mode");
+      }
+      if (render.cssWidth && render.cssHeight) {
+        figureRoot.style.width = `${render.cssWidth}px`;
+        figureRoot.style.height = `${render.cssHeight}px`;
+      }
+      figureRoot.style.background = themeColor(theme.plot?.background, render.background || "#ffffff");
+      figureRoot.style.padding = `${plotMargin.top || 0}px ${plotMargin.right || 0}px ${plotMargin.bottom || 0}px ${plotMargin.left || 0}px`;
+
+      applyTextBlock(titleEl, labels.title, theme.plot?.title, "plot-title");
+      applyTextBlock(subtitleEl, labels.subtitle, theme.plot?.subtitle, "plot-subtitle");
+      applyTextBlock(captionEl, labels.caption, theme.plot?.caption, "plot-caption");
+
+      const spacing = legendArea.spacing ?? 12;
+      figureBody.style.gap = `${spacing}px`;
+      outsideGuideLayer.style.display = legendPosition === "inside" || legendPosition === "none" ? "none" : "grid";
+      insideGuideLayer.style.display = legendPosition === "inside" ? "grid" : "none";
+
+      if (legendPosition === "left") {
+        figureBody.style.gridTemplateColumns = "auto minmax(0, 1fr)";
+        figureBody.style.gridTemplateRows = "minmax(0, 1fr)";
+        figureBody.insertBefore(outsideGuideLayer, viewport);
+      } else if (legendPosition === "right") {
+        figureBody.style.gridTemplateColumns = "minmax(0, 1fr) auto";
+        figureBody.style.gridTemplateRows = "minmax(0, 1fr)";
+        figureBody.appendChild(outsideGuideLayer);
+      } else if (legendPosition === "top") {
+        figureBody.style.gridTemplateRows = "auto minmax(0, 1fr)";
+        figureBody.style.gridTemplateColumns = "minmax(0, 1fr)";
+        figureBody.insertBefore(outsideGuideLayer, viewport);
+      } else if (legendPosition === "bottom") {
+        figureBody.style.gridTemplateRows = "minmax(0, 1fr) auto";
+        figureBody.style.gridTemplateColumns = "minmax(0, 1fr)";
+        figureBody.appendChild(outsideGuideLayer);
+      } else {
+        figureBody.style.gridTemplateColumns = "minmax(0, 1fr)";
+        figureBody.style.gridTemplateRows = "minmax(0, 1fr)";
+      }
+
+      return { legendPosition, legendArea };
+    }
+
+    function applyTextBlock(el, text, style, className) {
+      if (!text) {
+        el.style.display = "none";
+        return;
+      }
+      el.textContent = text;
+      el.style.display = "block";
+      el.style.color = themeColor(style, "#222222", "colour");
+      el.style.fontSize = `${style?.size || 11}px`;
+      el.style.fontWeight = style?.face === "bold" ? "700" : "400";
+      el.style.textAlign = (style?.hjust ?? 0) >= 0.5 ? ((style?.hjust ?? 0) >= 1 ? "right" : "center") : "left";
+      el.style.lineHeight = "1.25";
+      el.style.marginBottom = className === "plot-caption" ? "0" : "4px";
+      el.style.marginTop = className === "plot-caption" ? "4px" : "0";
+    }
+
+    function buildGuides(guides, layout) {
+      outsideGuideLayer.innerHTML = "";
+      insideGuideLayer.innerHTML = "";
       if (!guides || guides.length === 0) return;
+      const targetLayer = layout.legendPosition === "inside" ? insideGuideLayer : outsideGuideLayer;
       for (const guide of guides) {
         const el = document.createElement("div");
         el.className = "scene3d-guide";
+        styleGuideBox(el, sceneData.theme?.legend || {});
         if (guide.type === "legend") {
           el.innerHTML = `<div class="scene3d-guide-title">${escapeHtml(guide.title || guide.aesthetic || "")}</div>`;
           for (const entry of guide.entries || []) {
             const row = document.createElement("div");
             row.className = "scene3d-guide-row";
             row.innerHTML = `<span class="scene3d-guide-swatch"></span><span>${escapeHtml(entry.label || "")}</span>`;
-            row.querySelector(".scene3d-guide-swatch").style.background = entry.value || "#3366CC";
+            row.querySelector(".scene3d-guide-swatch").style.background = entry.glyph?.colour || entry.value || "#3366CC";
             el.appendChild(row);
           }
         } else if (guide.type === "colorbar") {
@@ -449,8 +846,45 @@
           `;
           el.querySelector(".scene3d-colorbar-ramp").style.background = `linear-gradient(90deg, ${palette.join(", ")})`;
         }
-        guideLayer.appendChild(el);
+        targetLayer.appendChild(el);
       }
+      positionInsideLegend(layout);
+    }
+
+    function styleGuideBox(el, legendTheme) {
+      el.style.background = themeColor(legendTheme.background, "rgba(255,255,255,0.9)");
+      el.style.borderColor = themeColor(legendTheme.background, "rgba(209,213,219,0.92)", "colour");
+      el.style.color = themeColor(legendTheme.text, "#111827", "colour");
+    }
+
+    function positionInsideLegend(layout) {
+      if (layout.legendPosition !== "inside") return;
+      const inside = layout.legendArea?.inside || {};
+      const pos = inside.position || [0.98, 0.98];
+      const just = inside.justification || [1, 1];
+      const viewportWidth = Math.max(viewport.clientWidth, 1);
+      const viewportHeight = Math.max(viewport.clientHeight, 1);
+      const rawLeft = Number(pos[0]) * viewportWidth;
+      const rawTop = (1 - Number(pos[1])) * viewportHeight;
+      const guideWidth = Math.max(insideGuideLayer.offsetWidth, 1);
+      const guideHeight = Math.max(insideGuideLayer.offsetHeight, 1);
+      const anchorLeft = rawLeft - Number(just[0]) * guideWidth;
+      const anchorTop = rawTop - (1 - Number(just[1])) * guideHeight;
+      const margin = 6;
+      const clampedLeft = THREE.MathUtils.clamp(anchorLeft, margin, Math.max(margin, viewportWidth - guideWidth - margin));
+      const clampedTop = THREE.MathUtils.clamp(anchorTop, margin, Math.max(margin, viewportHeight - guideHeight - margin));
+      insideGuideLayer.style.left = `${clampedLeft}px`;
+      insideGuideLayer.style.top = `${clampedTop}px`;
+      insideGuideLayer.style.transform = "none";
+      insideGuideLayer.style.pointerEvents = "none";
+    }
+
+    function themeColor(value, fallback, key = "fill") {
+      if (typeof value === "string") return value === "NA" ? fallback : value;
+      if (!value || typeof value !== "object") return fallback;
+      const out = value[key] ?? value.color ?? value.colour ?? value.fill;
+      if (out === null || out === undefined || out === "NA") return fallback;
+      return out;
     }
 
     function escapeHtml(value) {
@@ -655,15 +1089,116 @@
       world.add(group);
     }
 
+    function addScenePanels(panelSpec) {
+      const faces = panelSpec?.faces || [];
+      if (!faces.length) return;
+      const domain = sceneData.coordinateSystem?.domain || {};
+      const style = panelSpec.style || {};
+      const fill = themeColor(style.fill, "#E5E5E5");
+      const alpha = Number(style.alpha ?? 1);
+      const material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(fill),
+        opacity: alpha,
+        transparent: alpha < 1,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      for (const face of faces) {
+        const geometry = panelGeometry(face, domain);
+        if (!geometry) continue;
+        const mesh = new THREE.Mesh(geometry, material.clone());
+        mesh.renderOrder = -100;
+        scene.add(mesh);
+      }
+    }
+
+    function panelGeometry(face, domain) {
+      const xr = domain.x || [-1, 1];
+      const yr = domain.y || [-1, 1];
+      const zr = domain.z || [-1, 1];
+      const x0 = Number(xr[0]), x1 = Number(xr[1]);
+      const y0 = Number(yr[0]), y1 = Number(yr[1]);
+      const z0 = Number(zr[0]), z1 = Number(zr[1]);
+      const z = face.endsWith("_min") ? z0 : z1;
+      const y = face.endsWith("_min") ? y0 : y1;
+      const x = face.endsWith("_min") ? x0 : x1;
+      let positions;
+      if (face.startsWith("xy_")) {
+        positions = [x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z];
+      } else if (face.startsWith("xz_")) {
+        positions = [x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1];
+      } else if (face.startsWith("yz_")) {
+        positions = [x, y0, z0, x, y1, z0, x, y1, z1, x, y0, z1];
+      } else {
+        return null;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex([0, 1, 2, 0, 2, 3]);
+      return geometry;
+    }
+
     function addFaceProjection(layer) {
       const styleType = layer.style?.type || "density_grid";
       if (styleType === "points") {
         addFacePointsProjection(layer);
       } else if (styleType === "path" || styleType === "contour_lines") {
         addFacePolylineProjection(layer);
+      } else if (styleType === "source_points") {
+        addSourcePointFaceProjection(layer);
       } else {
         addFaceGridProjection(layer);
       }
+    }
+
+    function addSourcePointFaceProjection(layer) {
+      const source = layerById.get(layer.sourceLayerId);
+      const columns = source?.data?.columns || {};
+      const n = Math.min(columns.x?.length || 0, columns.y?.length || 0, columns.z?.length || 0);
+      if (!source || n === 0) return;
+      const faces = layer.faces || [];
+      const domain = sceneData.coordinateSystem?.domain || {};
+      const color = new THREE.Color();
+      for (const face of faces) {
+        const positions = new Float32Array(n * 3);
+        const colors = new Float32Array(n * 3);
+        for (let i = 0; i < n; i += 1) {
+          const point = sourceFacePoint(face, Number(columns.x[i]), Number(columns.y[i]), Number(columns.z[i]), domain, Number(layer.offset || 0));
+          positions[i * 3] = point[0];
+          positions[i * 3 + 1] = point[1];
+          positions[i * 3 + 2] = point[2];
+          color.set(columns.color?.[i] || "#3366CC");
+          colors[i * 3] = color.r;
+          colors[i * 3 + 1] = color.g;
+          colors[i * 3 + 2] = color.b;
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        const opacity = average(columns.alpha, 1) * (layer.style?.alphaMultiplier ?? 0.45);
+        const material = new THREE.PointsMaterial({
+          size: average(columns.size, 3) * (layer.style?.sizeMultiplier ?? 0.8),
+          vertexColors: true,
+          opacity,
+          transparent: opacity < 1,
+          depthWrite: false,
+          sizeAttenuation: false
+        });
+        world.add(new THREE.Points(geometry, material));
+      }
+    }
+
+    function sourceFacePoint(face, x, y, z, domain, offset) {
+      const xr = domain.x || [-1, 1];
+      const yr = domain.y || [-1, 1];
+      const zr = domain.z || [-1, 1];
+      if (face === "xy_min") return [x, y, Number(zr[0]) - offset];
+      if (face === "xy_max") return [x, y, Number(zr[1]) + offset];
+      if (face === "xz_min") return [x, Number(yr[0]) - offset, z];
+      if (face === "xz_max") return [x, Number(yr[1]) + offset, z];
+      if (face === "yz_min") return [Number(xr[0]) - offset, y, z];
+      if (face === "yz_max") return [Number(xr[1]) + offset, y, z];
+      return [x, y, z];
     }
 
     function addFaceGridProjection(layer) {
@@ -871,6 +1406,8 @@
       return { center, size, radius };
     }
 
+    const layerById = new Map((sceneData.layers || []).map((layer) => [layer.id, layer]));
+
     for (const layer of sceneData.layers || []) {
       if (layer.visible === false) continue;
       if (layer.type === "point_cloud") addPointCloud(layer);
@@ -884,6 +1421,7 @@
 
     addLights();
     const fit = computeBounds();
+    addScenePanels(sceneData.panels);
 
     function buildGridLines(gridSpec, theme) {
       if (!gridSpec || gridSpec.visible === false) return null;
@@ -907,7 +1445,7 @@
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       const material = new THREE.LineBasicMaterial({
-        color: new THREE.Color(theme?.axis?.["grid.major"] || "#D9DDE3"),
+        color: new THREE.Color(themeColor(theme?.axis?.["grid.major"], "#D9DDE3", "colour")),
         transparent: true,
         opacity: 0.85
       });
@@ -938,7 +1476,7 @@
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       const material = new THREE.LineBasicMaterial({
-        color: new THREE.Color(theme?.axis?.line || "#4B5563")
+        color: new THREE.Color(themeColor(theme?.axis?.line, "#4B5563", "colour"))
       });
       return new THREE.LineSegments(geometry, material);
     }
@@ -1029,7 +1567,9 @@
         : (coordinateSystem?.domain || {});
       const breaks = gridSpec.majorBreaks || {};
       const origin = coordinateSystem?.origin || [0, 0, 0];
-      const color = theme?.axis?.text || "#374151";
+      const color = themeColor(theme?.axis?.text, "#374151", "colour");
+      const tickSize = theme?.axis?.text?.size || 9;
+      const titleSize = theme?.axis?.title?.size || 11;
 
       for (const axis of ["x", "y", "z"]) {
         if (axesSpec?.[axis]?.visible === false) continue;
@@ -1040,11 +1580,9 @@
             if (value < Math.min(...range) || value > Math.max(...range)) continue;
             const position = axisPoint(axis, Number(value), origin);
             const sprite = createAxisTextSprite(formatTick(value), {
-              size: 11,
+              size: tickSize,
               color,
-              background: true,
-              backgroundColor: "rgba(255,255,255,0.82)",
-              borderColor: "rgba(209,213,219,0.72)"
+              background: false
             });
             sprite.position.fromArray(offsetAxisLabelPosition(axis, position, domain, 0.035));
             group.add(sprite);
@@ -1056,13 +1594,11 @@
           const title = axesSpec?.[axis]?.title || axis;
           const end = axisPoint(axis, Number(range[1]), origin);
           const sprite = createAxisTextSprite(title, {
-            size: 13,
-            color,
-            background: true,
-            backgroundColor: "rgba(255,255,255,0.9)",
-            borderColor: "rgba(209,213,219,0.82)"
+            size: titleSize,
+            color: themeColor(theme?.axis?.title, color, "colour"),
+            background: false
           });
-          sprite.position.fromArray(offsetAxisLabelPosition(axis, end, domain, 0.075));
+          sprite.position.fromArray(offsetAxisLabelPosition(axis, end, domain, 0.14));
           group.add(sprite);
           sprites.push(sprite);
         }
@@ -1378,7 +1914,7 @@
       radius: Math.max(fit.radius * 3.5, 1),
       azimuth: 0,
       elevation: 0,
-      baseSpan: Math.max(fit.radius * 2.6 / (initialCamera.zoom || 1), 1)
+      baseSpan: Math.max(fit.radius * (1.55 + 2 * (sceneData.view?.camera?.padding ?? 0.08)) / (initialCamera.zoom || 1), 1)
     };
 
     function makeCamera() {
@@ -1389,17 +1925,22 @@
       const zoom = initialCamera.zoom || 1;
 
       if (projection === "perspective") {
-        return new THREE.PerspectiveCamera(45, aspect, 0.01, 10000);
+        return new THREE.PerspectiveCamera(
+          initialCamera.fov || 35,
+          aspect,
+          initialCamera.near || 0.01,
+          initialCamera.far || 10000
+        );
       }
 
-      const span = Math.max(fit.radius * 2.6 / zoom, 1);
+      const span = orbit.baseSpan;
       return new THREE.OrthographicCamera(
         -span * aspect / 2,
         span * aspect / 2,
         span / 2,
         -span / 2,
-        -10000,
-        10000
+        initialCamera.near ? -initialCamera.far : -10000,
+        initialCamera.far || 10000
       );
     }
 
@@ -1450,7 +1991,7 @@
       if (camera.isPerspectiveCamera) {
         camera.aspect = aspect;
       } else {
-        const span = Math.max(fit.radius * 2.6 / (initialCamera.zoom || 1), 1);
+        const span = orbit.baseSpan;
         camera.left = -span * aspect / 2;
         camera.right = span * aspect / 2;
         camera.top = span / 2;
@@ -1542,6 +2083,8 @@
     controls = installPointerOrbitControls();
     fallback.remove();
     status.textContent = "Scene3D renderer ready; drag to rotate, wheel to zoom";
+    window.__scene3dReady = true;
+    document.body.dataset.rendererReady = "true";
 
     window.addEventListener("resize", resize);
     document.getElementById("reset-view").addEventListener("click", resetView);
@@ -1552,12 +2095,16 @@
     document.getElementById("export-view").addEventListener("click", () => {
       const view = {
         schemaVersion: "0.1.0",
+        view: sceneData.view?.camera?.view || null,
         camera: {
           projection: camera.isPerspectiveCamera ? "perspective" : "orthographic",
           position: camera.position.toArray(),
           target: orbit.target.toArray(),
           up: camera.up.toArray(),
-          zoom: camera.zoom || initialCamera.zoom || 1
+          zoom: camera.zoom || initialCamera.zoom || 1,
+          azimuth: sceneData.view?.camera?.azimuth,
+          elevation: sceneData.view?.camera?.elevation,
+          roll: sceneData.view?.camera?.roll
         }
       };
       download("view.json", "application/json", JSON.stringify(view, null, 2));

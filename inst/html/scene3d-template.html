@@ -24,6 +24,19 @@
       grid-template-rows: auto 1fr;
       background: #ffffff;
     }
+    body.export-mode #app {
+      grid-template-rows: 1fr;
+    }
+    body.export-mode #toolbar {
+      display: none;
+    }
+    body.svg-raster-mode #plot-title,
+    body.svg-raster-mode #plot-subtitle,
+    body.svg-raster-mode #plot-caption,
+    body.svg-raster-mode #outside-guide-layer,
+    body.svg-raster-mode #inside-guide-layer {
+      visibility: hidden;
+    }
     #toolbar {
       display: flex;
       align-items: center;
@@ -54,10 +67,36 @@
       font-size: 12px;
       white-space: nowrap;
     }
-    #viewport {
+    #figure-root {
+      position: relative;
+      box-sizing: border-box;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      background: #ffffff;
+      overflow: hidden;
+    }
+    #plot-title,
+    #plot-subtitle,
+    #plot-caption {
+      display: none;
+      min-width: 0;
+    }
+    #figure-body {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      gap: 12px;
+      align-items: center;
+    }
+    #scene-viewport {
       position: relative;
       min-width: 0;
       min-height: 0;
+      overflow: hidden;
     }
     #abs-label-layer {
       position: absolute;
@@ -66,10 +105,45 @@
       overflow: hidden;
       z-index: 1;
     }
-    #guide-layer {
+    #axis-label-layer {
       position: absolute;
-      right: 14px;
-      top: 14px;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 2;
+    }
+    .scene3d-axis-label {
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: #4b5563;
+      font-size: 10px;
+      line-height: 1;
+      white-space: nowrap;
+      text-rendering: geometricPrecision;
+      transform-origin: center center;
+      will-change: transform;
+      user-select: none;
+    }
+    .scene3d-axis-title {
+      color: #374151;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    #outside-guide-layer {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      align-content: center;
+      justify-content: start;
+      gap: 8px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    #inside-guide-layer {
+      position: absolute;
+      left: 0;
+      top: 0;
       display: grid;
       gap: 8px;
       max-width: min(260px, calc(100vw - 28px));
@@ -78,7 +152,7 @@
     }
     .scene3d-guide {
       border: 1px solid rgba(209, 213, 219, 0.92);
-      border-radius: 6px;
+      border-radius: 0;
       background: rgba(255, 255, 255, 0.9);
       color: #111827;
       padding: 8px;
@@ -166,10 +240,19 @@
       <button id="export-view" type="button">Export view.json</button>
       <div id="status">Loading renderer</div>
     </div>
-    <div id="viewport">
-      <div id="fallback">This prototype loads three.js from a CDN. The Scene3D data is embedded in this file, but first render requires network access unless a local vendor bundle is added later.</div>
-      <div id="abs-label-layer"></div>
-      <div id="guide-layer"></div>
+    <div id="figure-root">
+      <div id="plot-title"></div>
+      <div id="plot-subtitle"></div>
+      <div id="figure-body">
+        <div id="scene-viewport">
+          <div id="fallback">The Scene3D data is embedded in this file. If the renderer does not start after opening the file directly, serve this directory with a local HTTP server and open the http://127.0.0.1 URL.</div>
+          <div id="abs-label-layer"></div>
+          <div id="axis-label-layer"></div>
+          <div id="inside-guide-layer"></div>
+        </div>
+        <div id="outside-guide-layer"></div>
+      </div>
+      <div id="plot-caption"></div>
     </div>
   </div>
 
@@ -177,32 +260,59 @@
 {}
   </script>
 
+  <script>
+    window.setTimeout(function () {
+      if (document.body.dataset.rendererReady === "true") return;
+      var status = document.getElementById("status");
+      var fallback = document.getElementById("fallback");
+      var message = "Renderer did not start. Most browsers block local ES modules over file://; run a local server, for example: Rscript -e 'httpuv::runStaticServer(\".\", port=8765, browse=TRUE)'";
+      if (status) status.textContent = message;
+      if (fallback) {
+        fallback.style.display = "block";
+        fallback.textContent = message;
+      }
+    }, 1800);
+  </script>
+
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
 
     const sceneData = JSON.parse(document.getElementById("scene3d-data").textContent);
-    const viewport = document.getElementById("viewport");
+    const figureRoot = document.getElementById("figure-root");
+    const figureBody = document.getElementById("figure-body");
+    const viewport = document.getElementById("scene-viewport");
     const status = document.getElementById("status");
     const fallback = document.getElementById("fallback");
     const absLabelLayer = document.getElementById("abs-label-layer");
-    const guideLayer = document.getElementById("guide-layer");
+    const axisLabelLayer = document.getElementById("axis-label-layer");
+    const outsideGuideLayer = document.getElementById("outside-guide-layer");
+    const insideGuideLayer = document.getElementById("inside-guide-layer");
+    const titleEl = document.getElementById("plot-title");
+    const subtitleEl = document.getElementById("plot-subtitle");
+    const captionEl = document.getElementById("plot-caption");
 
     THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
-    buildGuides(sceneData.guides || []);
+    const figureLayout = layoutFigure(sceneData);
+    buildGuides(sceneData.guides || [], figureLayout);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(sceneData.theme?.scene?.background || "#ffffff");
+    scene.background = new THREE.Color(themeColor(sceneData.theme?.scene?.background, "#ffffff"));
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       preserveDrawingBuffer: true
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(sceneData.render?.devicePixelRatio || Math.min(window.devicePixelRatio || 1, 2));
     viewport.appendChild(renderer.domElement);
 
+    const sceneGroup = new THREE.Group();
+    const aspectScale = computeAspectScale(sceneData.coordinateSystem);
+    sceneGroup.scale.set(aspectScale.x, aspectScale.y, aspectScale.z);
+    scene.add(sceneGroup);
+
     const world = new THREE.Group();
-    scene.add(world);
+    sceneGroup.add(world);
 
     const bounds = {
       min: new THREE.Vector3(Infinity, Infinity, Infinity),
@@ -212,6 +322,38 @@
     function includePoint(x, y, z) {
       bounds.min.min(new THREE.Vector3(x, y, z));
       bounds.max.max(new THREE.Vector3(x, y, z));
+    }
+
+    function computeAspectScale(coordinateSystem) {
+      const aspect = coordinateSystem?.aspect || {};
+      const ratio = aspect.ratio || [1, 1, 1];
+      const domain = coordinateSystem?.domain || {};
+      const ranges = ["x", "y", "z"].map((axis) => {
+        const value = domain[axis] || [-1, 1];
+        return Math.max(Math.abs(Number(value[1]) - Number(value[0])), 1e-9);
+      });
+      const target = Math.max(
+        ranges[0] / Math.max(Number(ratio[0]) || 1, 1e-9),
+        ranges[1] / Math.max(Number(ratio[1]) || 1, 1e-9),
+        ranges[2] / Math.max(Number(ratio[2]) || 1, 1e-9)
+      );
+      return new THREE.Vector3(
+        target * (Number(ratio[0]) || 1) / ranges[0],
+        target * (Number(ratio[1]) || 1) / ranges[1],
+        target * (Number(ratio[2]) || 1) / ranges[2]
+      );
+    }
+
+    function dataToDisplayVector(value) {
+      return new THREE.Vector3(value.x * aspectScale.x, value.y * aspectScale.y, value.z * aspectScale.z);
+    }
+
+    function dataArrayToDisplayVector(value) {
+      return new THREE.Vector3(
+        Number(value[0]) * aspectScale.x,
+        Number(value[1]) * aspectScale.y,
+        Number(value[2]) * aspectScale.z
+      );
     }
 
     function addLights() {
@@ -231,19 +373,97 @@
       scene.add(light);
     }
 
-    function buildGuides(guides) {
-      guideLayer.innerHTML = "";
+    function layoutFigure(sceneData) {
+      const render = sceneData.render || {};
+      const layout = sceneData.layout || {};
+      const theme = sceneData.theme || {};
+      const labels = sceneData.labels || {};
+      const legendArea = layout.legendArea || {};
+      const legendPosition = theme.legend?.position || legendArea.position || "right";
+      const plotMargin = layout.plotMargin || { top: 8, right: 8, bottom: 8, left: 8 };
+
+      if (render.export === true) {
+        document.body.classList.add("export-mode");
+      }
+      if (render.svgRasterMode === true) {
+        document.body.classList.add("svg-raster-mode");
+      }
+      if (render.cssWidth && render.cssHeight) {
+        figureRoot.style.width = `${render.cssWidth}px`;
+        figureRoot.style.height = `${render.cssHeight}px`;
+      }
+      figureRoot.style.background = themeColor(theme.plot?.background, render.background || "#ffffff");
+      figureRoot.style.padding = `${plotMargin.top || 0}px ${plotMargin.right || 0}px ${plotMargin.bottom || 0}px ${plotMargin.left || 0}px`;
+
+      applyTextBlock(titleEl, labels.title, theme.plot?.title, "plot-title");
+      applyTextBlock(subtitleEl, labels.subtitle, theme.plot?.subtitle, "plot-subtitle");
+      applyTextBlock(captionEl, labels.caption, theme.plot?.caption, "plot-caption");
+
+      const spacing = legendArea.spacing ?? 12;
+      figureBody.style.gap = `${spacing}px`;
+      outsideGuideLayer.style.display = legendPosition === "inside" || legendPosition === "none" ? "none" : "grid";
+      insideGuideLayer.style.display = legendPosition === "inside" ? "grid" : "none";
+
+      if (legendPosition === "left") {
+        figureBody.style.gridTemplateColumns = "auto minmax(0, 1fr)";
+        figureBody.style.gridTemplateRows = "minmax(0, 1fr)";
+        figureBody.insertBefore(outsideGuideLayer, viewport);
+        outsideGuideLayer.style.alignContent = "center";
+      } else if (legendPosition === "right") {
+        figureBody.style.gridTemplateColumns = "minmax(0, 1fr) auto";
+        figureBody.style.gridTemplateRows = "minmax(0, 1fr)";
+        figureBody.appendChild(outsideGuideLayer);
+        outsideGuideLayer.style.alignContent = "center";
+      } else if (legendPosition === "top") {
+        figureBody.style.gridTemplateRows = "auto minmax(0, 1fr)";
+        figureBody.style.gridTemplateColumns = "minmax(0, 1fr)";
+        figureBody.insertBefore(outsideGuideLayer, viewport);
+        outsideGuideLayer.style.alignContent = "start";
+      } else if (legendPosition === "bottom") {
+        figureBody.style.gridTemplateRows = "minmax(0, 1fr) auto";
+        figureBody.style.gridTemplateColumns = "minmax(0, 1fr)";
+        figureBody.appendChild(outsideGuideLayer);
+        outsideGuideLayer.style.alignContent = "start";
+      } else {
+        figureBody.style.gridTemplateColumns = "minmax(0, 1fr)";
+        figureBody.style.gridTemplateRows = "minmax(0, 1fr)";
+      }
+
+      return { legendPosition, legendArea };
+    }
+
+    function applyTextBlock(el, text, style, className) {
+      if (!text) {
+        el.style.display = "none";
+        return;
+      }
+      el.textContent = text;
+      el.style.display = "block";
+      el.style.color = themeColor(style, "#222222", "colour");
+      el.style.fontSize = `${style?.size || 11}px`;
+      el.style.fontWeight = style?.face === "bold" ? "700" : "400";
+      el.style.textAlign = (style?.hjust ?? 0) >= 0.5 ? ((style?.hjust ?? 0) >= 1 ? "right" : "center") : "left";
+      el.style.lineHeight = "1.25";
+      el.style.marginBottom = className === "plot-caption" ? "0" : "4px";
+      el.style.marginTop = className === "plot-caption" ? "4px" : "0";
+    }
+
+    function buildGuides(guides, layout) {
+      outsideGuideLayer.innerHTML = "";
+      insideGuideLayer.innerHTML = "";
       if (!guides || guides.length === 0) return;
+      const targetLayer = layout.legendPosition === "inside" ? insideGuideLayer : outsideGuideLayer;
       for (const guide of guides) {
         const el = document.createElement("div");
         el.className = "scene3d-guide";
+        styleGuideBox(el, sceneData.theme?.legend || {});
         if (guide.type === "legend") {
           el.innerHTML = `<div class="scene3d-guide-title">${escapeHtml(guide.title || guide.aesthetic || "")}</div>`;
           for (const entry of guide.entries || []) {
             const row = document.createElement("div");
             row.className = "scene3d-guide-row";
             row.innerHTML = `<span class="scene3d-guide-swatch"></span><span>${escapeHtml(entry.label || "")}</span>`;
-            row.querySelector(".scene3d-guide-swatch").style.background = entry.value || "#3366CC";
+            row.querySelector(".scene3d-guide-swatch").style.background = entry.glyph?.colour || entry.value || "#3366CC";
             el.appendChild(row);
           }
         } else if (guide.type === "colorbar") {
@@ -256,8 +476,45 @@
           `;
           el.querySelector(".scene3d-colorbar-ramp").style.background = `linear-gradient(90deg, ${palette.join(", ")})`;
         }
-        guideLayer.appendChild(el);
+        targetLayer.appendChild(el);
       }
+      positionInsideLegend(layout);
+    }
+
+    function styleGuideBox(el, legendTheme) {
+      el.style.background = themeColor(legendTheme.background, "rgba(255,255,255,0.9)");
+      el.style.borderColor = themeColor(legendTheme.background, "rgba(209,213,219,0.92)", "colour");
+      el.style.color = themeColor(legendTheme.text, "#111827", "colour");
+    }
+
+    function positionInsideLegend(layout) {
+      if (layout.legendPosition !== "inside") return;
+      const inside = layout.legendArea?.inside || {};
+      const pos = inside.position || [0.98, 0.98];
+      const just = inside.justification || [1, 1];
+      const viewportWidth = Math.max(viewport.clientWidth, 1);
+      const viewportHeight = Math.max(viewport.clientHeight, 1);
+      const rawLeft = Number(pos[0]) * viewportWidth;
+      const rawTop = (1 - Number(pos[1])) * viewportHeight;
+      const guideWidth = Math.max(insideGuideLayer.offsetWidth, 1);
+      const guideHeight = Math.max(insideGuideLayer.offsetHeight, 1);
+      const anchorLeft = rawLeft - Number(just[0]) * guideWidth;
+      const anchorTop = rawTop - (1 - Number(just[1])) * guideHeight;
+      const margin = 6;
+      const clampedLeft = THREE.MathUtils.clamp(anchorLeft, margin, Math.max(margin, viewportWidth - guideWidth - margin));
+      const clampedTop = THREE.MathUtils.clamp(anchorTop, margin, Math.max(margin, viewportHeight - guideHeight - margin));
+      insideGuideLayer.style.left = `${clampedLeft}px`;
+      insideGuideLayer.style.top = `${clampedTop}px`;
+      insideGuideLayer.style.transform = "none";
+      insideGuideLayer.style.pointerEvents = "none";
+    }
+
+    function themeColor(value, fallback, key = "fill") {
+      if (typeof value === "string") return value === "NA" ? fallback : value;
+      if (!value || typeof value !== "object") return fallback;
+      const out = value[key] ?? value.color ?? value.colour ?? value.fill;
+      if (out === null || out === undefined || out === "NA") return fallback;
+      return out;
     }
 
     function escapeHtml(value) {
@@ -462,15 +719,200 @@
       world.add(group);
     }
 
+    function addScenePanels(panelSpec) {
+      const faces = panelSpec?.faces || [];
+      if (!faces.length) return null;
+      const domain = sceneData.coordinateSystem?.domain || {};
+      const style = panelSpec.style || {};
+      const fill = themeColor(style.fill, "#E5E5E5");
+      const alpha = Number(style.alpha ?? 1);
+      const dynamicBackFaces = panelSpec.dynamicBackFaces === true;
+      const material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(fill),
+        opacity: alpha,
+        transparent: alpha < 1,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      const items = [];
+      for (const face of faces) {
+        const geometry = panelGeometry(face, domain);
+        if (!geometry) continue;
+        const mesh = new THREE.Mesh(geometry, material.clone());
+        mesh.renderOrder = -100;
+        sceneGroup.add(mesh);
+        const grid = panelGridLines(face, domain, sceneData.axes?.grid, sceneData.theme);
+        if (grid) sceneGroup.add(grid);
+        items.push({ face, mesh, grid });
+      }
+      function update() {
+        const active = dynamicBackFaces ? cameraBackFaces(domain) : new Set(faces);
+        for (const item of items) {
+          const visible = active.has(item.face);
+          item.mesh.visible = visible;
+          if (item.grid) item.grid.visible = visible;
+        }
+      }
+      return { update };
+    }
+
+    function cameraBackFaces(domain) {
+      const center = domainCenterDisplay(domain);
+      const cameraPos = camera?.position || new THREE.Vector3(1, -1, 1);
+      const faces = new Set();
+      faces.add(cameraPos.z >= center.z ? "xy_min" : "xy_max");
+      faces.add(cameraPos.y >= center.y ? "xz_min" : "xz_max");
+      faces.add(cameraPos.x >= center.x ? "yz_min" : "yz_max");
+      return faces;
+    }
+
+    function domainCenterDisplay(domain) {
+      const xr = domain.x || [-1, 1];
+      const yr = domain.y || [-1, 1];
+      const zr = domain.z || [-1, 1];
+      return dataArrayToDisplayVector([
+        (Number(xr[0]) + Number(xr[1])) / 2,
+        (Number(yr[0]) + Number(yr[1])) / 2,
+        (Number(zr[0]) + Number(zr[1])) / 2
+      ]);
+    }
+
+    function panelGridLines(face, domain, gridSpec, theme) {
+      if (!gridSpec || gridSpec.visible === false) return null;
+      const positions = [];
+      const breaks = gridSpec.majorBreaks || {};
+      const offset = 0.0005;
+      if (face.startsWith("xy_")) {
+        addFacePlaneLines(positions, "x", "y", "z", face.endsWith("_min") ? "min" : "max", domain, breaks, offset);
+      } else if (face.startsWith("xz_")) {
+        addFacePlaneLines(positions, "x", "z", "y", face.endsWith("_min") ? "min" : "max", domain, breaks, offset);
+      } else if (face.startsWith("yz_")) {
+        addFacePlaneLines(positions, "y", "z", "x", face.endsWith("_min") ? "min" : "max", domain, breaks, offset);
+      }
+      if (!positions.length) return null;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const material = new THREE.LineBasicMaterial({
+        color: new THREE.Color(themeColor(theme?.axis?.["grid.major"], "#FFFFFF", "colour")),
+        transparent: true,
+        opacity: theme?.axis?.["grid.major"]?.alpha ?? 0.95
+      });
+      const lines = new THREE.LineSegments(geometry, material);
+      lines.renderOrder = -90;
+      return lines;
+    }
+
+    function addFacePlaneLines(positions, axisA, axisB, constantAxis, side, domain, breaks, offset) {
+      const aDomain = domain[axisA] || [-1, 1];
+      const bDomain = domain[axisB] || [-1, 1];
+      const cDomain = domain[constantAxis] || [-1, 1];
+      const aBreaks = breaks[axisA] || niceBreaks(aDomain);
+      const bBreaks = breaks[axisB] || niceBreaks(bDomain);
+      const sign = side === "min" ? -1 : 1;
+      const constantValue = Number(side === "min" ? cDomain[0] : cDomain[1]) + sign * offset;
+      const aMin = Math.min(...aDomain);
+      const aMax = Math.max(...aDomain);
+      const bMin = Math.min(...bDomain);
+      const bMax = Math.max(...bDomain);
+      const aEps = Math.max(Math.abs(aMax - aMin), 1) * 1e-9;
+      const bEps = Math.max(Math.abs(bMax - bMin), 1) * 1e-9;
+      for (const a of aBreaks) {
+        if (a <= aMin + aEps || a >= aMax - aEps) continue;
+        pushAxisPlaneLine(positions, axisA, axisB, constantAxis, a, bDomain[0], bDomain[1], constantValue);
+      }
+      for (const b of bBreaks) {
+        if (b <= bMin + bEps || b >= bMax - bEps) continue;
+        pushAxisPlaneLine(positions, axisB, axisA, constantAxis, b, aDomain[0], aDomain[1], constantValue);
+      }
+    }
+
+    function panelGeometry(face, domain) {
+      const xr = domain.x || [-1, 1];
+      const yr = domain.y || [-1, 1];
+      const zr = domain.z || [-1, 1];
+      const x0 = Number(xr[0]), x1 = Number(xr[1]);
+      const y0 = Number(yr[0]), y1 = Number(yr[1]);
+      const z0 = Number(zr[0]), z1 = Number(zr[1]);
+      const z = face.endsWith("_min") ? z0 : z1;
+      const y = face.endsWith("_min") ? y0 : y1;
+      const x = face.endsWith("_min") ? x0 : x1;
+      let positions;
+      if (face.startsWith("xy_")) {
+        positions = [x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z];
+      } else if (face.startsWith("xz_")) {
+        positions = [x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1];
+      } else if (face.startsWith("yz_")) {
+        positions = [x, y0, z0, x, y1, z0, x, y1, z1, x, y0, z1];
+      } else {
+        return null;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex([0, 1, 2, 0, 2, 3]);
+      return geometry;
+    }
+
     function addFaceProjection(layer) {
       const styleType = layer.style?.type || "density_grid";
       if (styleType === "points") {
         addFacePointsProjection(layer);
       } else if (styleType === "path" || styleType === "contour_lines") {
         addFacePolylineProjection(layer);
+      } else if (styleType === "source_points") {
+        addSourcePointFaceProjection(layer);
       } else {
         addFaceGridProjection(layer);
       }
+    }
+
+    function addSourcePointFaceProjection(layer) {
+      const source = layerById.get(layer.sourceLayerId);
+      const columns = source?.data?.columns || {};
+      const n = Math.min(columns.x?.length || 0, columns.y?.length || 0, columns.z?.length || 0);
+      if (!source || n === 0) return;
+      const faces = layer.faces || [];
+      const domain = sceneData.coordinateSystem?.domain || {};
+      const color = new THREE.Color();
+      for (const face of faces) {
+        const positions = new Float32Array(n * 3);
+        const colors = new Float32Array(n * 3);
+        for (let i = 0; i < n; i += 1) {
+          const point = sourceFacePoint(face, Number(columns.x[i]), Number(columns.y[i]), Number(columns.z[i]), domain, Number(layer.offset || 0));
+          positions[i * 3] = point[0];
+          positions[i * 3 + 1] = point[1];
+          positions[i * 3 + 2] = point[2];
+          color.set(columns.color?.[i] || "#3366CC");
+          colors[i * 3] = color.r;
+          colors[i * 3 + 1] = color.g;
+          colors[i * 3 + 2] = color.b;
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        const opacity = average(columns.alpha, 1) * (layer.style?.alphaMultiplier ?? 0.45);
+        const material = new THREE.PointsMaterial({
+          size: average(columns.size, 3) * (layer.style?.sizeMultiplier ?? 0.8),
+          vertexColors: true,
+          opacity,
+          transparent: opacity < 1,
+          depthWrite: false,
+          sizeAttenuation: false
+        });
+        world.add(new THREE.Points(geometry, material));
+      }
+    }
+
+    function sourceFacePoint(face, x, y, z, domain, offset) {
+      const xr = domain.x || [-1, 1];
+      const yr = domain.y || [-1, 1];
+      const zr = domain.z || [-1, 1];
+      if (face === "xy_min") return [x, y, Number(zr[0]) - offset];
+      if (face === "xy_max") return [x, y, Number(zr[1]) + offset];
+      if (face === "xz_min") return [x, Number(yr[0]) - offset, z];
+      if (face === "xz_max") return [x, Number(yr[1]) + offset, z];
+      if (face === "yz_min") return [Number(xr[0]) - offset, y, z];
+      if (face === "yz_max") return [Number(xr[1]) + offset, y, z];
+      return [x, y, z];
     }
 
     function addFaceGridProjection(layer) {
@@ -672,11 +1114,15 @@
         bounds.min.set(-1, -1, -1);
         bounds.max.set(1, 1, 1);
       }
-      const center = bounds.min.clone().add(bounds.max).multiplyScalar(0.5);
-      const size = bounds.max.clone().sub(bounds.min);
+      const displayMin = dataToDisplayVector(bounds.min);
+      const displayMax = dataToDisplayVector(bounds.max);
+      const center = displayMin.clone().add(displayMax).multiplyScalar(0.5);
+      const size = displayMax.clone().sub(displayMin);
       const radius = Math.max(size.x, size.y, size.z, 1) * 0.75;
       return { center, size, radius };
     }
+
+    const layerById = new Map((sceneData.layers || []).map((layer) => [layer.id, layer]));
 
     for (const layer of sceneData.layers || []) {
       if (layer.visible === false) continue;
@@ -691,6 +1137,7 @@
 
     addLights();
     const fit = computeBounds();
+    const scenePanels = addScenePanels(sceneData.panels);
 
     function buildGridLines(gridSpec, theme) {
       if (!gridSpec || gridSpec.visible === false) return null;
@@ -714,7 +1161,7 @@
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       const material = new THREE.LineBasicMaterial({
-        color: new THREE.Color(theme?.axis?.["grid.major"] || "#D9DDE3"),
+        color: new THREE.Color(themeColor(theme?.axis?.["grid.major"], "#D9DDE3", "colour")),
         transparent: true,
         opacity: 0.85
       });
@@ -722,60 +1169,65 @@
     }
 
     function buildAxisLines(axesSpec, coordinateSystem, theme) {
-      const positions = [];
       const gridSpec = axesSpec?.grid || {};
       const domain = gridSpec.domainMode === "positive" || gridSpec.domainMode === "negative"
         ? (gridSpec.domain || coordinateSystem?.domain || {})
         : (coordinateSystem?.domain || {});
-      const origin = coordinateSystem?.origin || [0, 0, 0];
       const axisStyle = axesSpec?.style || {};
       const axisLengthFraction = THREE.MathUtils.clamp(Number(axisStyle.lengthFraction ?? gridSpec.axisLengthFraction ?? 1), 0.01, 1);
       const axisArrows = (axisStyle.arrows ?? gridSpec.axisArrows) === true;
 
-      if (axesSpec?.x?.visible !== false) {
-        addAxisWithArrow(positions, "x", domain.x || [-1, 1], origin, axisLengthFraction, axisArrows);
-      }
-      if (axesSpec?.y?.visible !== false) {
-        addAxisWithArrow(positions, "y", domain.y || [-1, 1], origin, axisLengthFraction, axisArrows);
-      }
-      if (axesSpec?.z?.visible !== false) {
-        addAxisWithArrow(positions, "z", domain.z || [-1, 1], origin, axisLengthFraction, axisArrows);
-      }
-
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const positionAttribute = new THREE.Float32BufferAttribute(new Float32Array(18), 3);
+      geometry.setAttribute("position", positionAttribute);
       const material = new THREE.LineBasicMaterial({
-        color: new THREE.Color(theme?.axis?.line || "#4B5563")
+        color: new THREE.Color(themeColor(theme?.axis?.line, "#4B5563", "colour"))
       });
-      return new THREE.LineSegments(geometry, material);
+      const line = new THREE.LineSegments(geometry, material);
+      line.frustumCulled = false;
+      return {
+        group: line,
+        update() {
+          if (!camera) return;
+          const rect = renderer.domElement.getBoundingClientRect();
+          const edges = selectAxisEdges(domain, Math.max(rect.width, 1), Math.max(rect.height, 1));
+          const positions = [];
+          if (axesSpec?.x?.visible !== false) addAxisEdgeWithArrow(positions, edges.x, axisLengthFraction, axisArrows);
+          if (axesSpec?.y?.visible !== false) addAxisEdgeWithArrow(positions, edges.y, axisLengthFraction, axisArrows);
+          if (axesSpec?.z?.visible !== false) addAxisEdgeWithArrow(positions, edges.z, axisLengthFraction, axisArrows);
+          const needed = Math.max(positions.length, 18);
+          if (positionAttribute.array.length < needed) {
+            geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(needed), 3));
+          }
+          const attr = geometry.getAttribute("position");
+          attr.array.fill(0);
+          attr.array.set(positions);
+          attr.needsUpdate = true;
+          geometry.setDrawRange(0, positions.length / 3);
+          geometry.computeBoundingSphere();
+        }
+      };
     }
 
-    function addAxisWithArrow(positions, axis, domainRange, origin, fraction, arrows) {
-      const idx = axisIndex(axis);
-      const startValue = Number(domainRange[0]);
-      const rawEndValue = Number(domainRange[1]);
-      const endValue = startValue + (rawEndValue - startValue) * fraction;
-      const start = [origin[0], origin[1], origin[2]];
-      const end = [origin[0], origin[1], origin[2]];
-      start[idx] = startValue;
-      end[idx] = endValue;
+    function addAxisEdgeWithArrow(positions, edge, fraction, arrows) {
+      if (!edge) return;
+      const start = edge.start.slice();
+      const end = [
+        edge.start[0] + (edge.end[0] - edge.start[0]) * fraction,
+        edge.start[1] + (edge.end[1] - edge.start[1]) * fraction,
+        edge.start[2] + (edge.end[2] - edge.start[2]) * fraction
+      ];
       pushLine(positions, start, end);
 
       if (!arrows) return;
-      const length = Math.abs(endValue - startValue);
+      const length = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]);
       if (!Number.isFinite(length) || length <= 0) return;
-      const sign = Math.sign(endValue - startValue) || 1;
-      const arrowLength = Math.min(length * 0.16, Math.max(length * 0.06, 0.12));
-      const spread = arrowLength * 0.55;
-      const sideAxes = ["x", "y", "z"].filter((candidate) => candidate !== axis);
-
-      for (const sideAxis of sideAxes) {
-        const sideIdx = axisIndex(sideAxis);
-        const wing = [end[0], end[1], end[2]];
-        wing[idx] = endValue - sign * arrowLength;
-        wing[sideIdx] += spread;
-        pushLine(positions, end, wing);
-      }
+      const direction = new THREE.Vector3(end[0] - start[0], end[1] - start[1], end[2] - start[2]).normalize();
+      const view = camera.position.clone().sub(new THREE.Vector3(end[0], end[1], end[2])).normalize();
+      const side = new THREE.Vector3().crossVectors(direction, view).normalize().multiplyScalar(length * 0.045);
+      const base = new THREE.Vector3(end[0], end[1], end[2]).sub(direction.multiplyScalar(length * 0.09));
+      pushLine(positions, end, base.clone().add(side).toArray());
+      pushLine(positions, end, base.clone().sub(side).toArray());
     }
 
     function addPlaneLines(positions, axisA, axisB, constantAxis, domain, breaks, origin) {
@@ -825,10 +1277,75 @@
       return out;
     }
 
+    function selectAxisEdges(domain, width, height) {
+      const xr = domain.x || [-1, 1];
+      const yr = domain.y || [-1, 1];
+      const zr = domain.z || [-1, 1];
+      const x0 = Number(xr[0]), x1 = Number(xr[1]);
+      const y0 = Number(yr[0]), y1 = Number(yr[1]);
+      const z0 = Number(zr[0]), z1 = Number(zr[1]);
+      const edges = {
+        x: [
+          edge("x", [x0, y0, z0], [x1, y0, z0]),
+          edge("x", [x0, y1, z0], [x1, y1, z0]),
+          edge("x", [x0, y0, z1], [x1, y0, z1]),
+          edge("x", [x0, y1, z1], [x1, y1, z1])
+        ],
+        y: [
+          edge("y", [x0, y0, z0], [x0, y1, z0]),
+          edge("y", [x1, y0, z0], [x1, y1, z0]),
+          edge("y", [x0, y0, z1], [x0, y1, z1]),
+          edge("y", [x1, y0, z1], [x1, y1, z1])
+        ],
+        z: [
+          edge("z", [x0, y0, z0], [x0, y0, z1]),
+          edge("z", [x1, y0, z0], [x1, y0, z1]),
+          edge("z", [x0, y1, z0], [x0, y1, z1]),
+          edge("z", [x1, y1, z0], [x1, y1, z1])
+        ]
+      };
+      return {
+        x: chooseScreenEdge(edges.x, width, height, "bottom"),
+        y: chooseScreenEdge(edges.y, width, height, "bottom"),
+        z: chooseScreenEdge(edges.z, width, height, "left")
+      };
+    }
+
+    function edge(axis, start, end) {
+      return { axis, start, end };
+    }
+
+    function chooseScreenEdge(edges, width, height, mode) {
+      let best = edges[0];
+      let bestScore = -Infinity;
+      for (const item of edges) {
+        const a = worldToViewport(dataArrayToDisplayVector(item.start), width, height);
+        const b = worldToViewport(dataArrayToDisplayVector(item.end), width, height);
+        const midX = (a.x + b.x) / 2;
+        const midY = (a.y + b.y) / 2;
+        const length = Math.hypot(a.x - b.x, a.y - b.y);
+        const visible = Number.isFinite(a.z) && Number.isFinite(b.z);
+        if (!visible || length < 4) continue;
+        const score = mode === "left"
+          ? -midX + length * 0.01
+          : midY + length * 0.01 - Math.abs(midX - width / 2) * 0.02;
+        if (score > bestScore) {
+          bestScore = score;
+          best = item;
+        }
+      }
+      return best;
+    }
+
+    function edgePoint(edge, value) {
+      const out = edge.start.slice();
+      out[axisIndex(edge.axis)] = value;
+      return out;
+    }
+
     function buildAxisSprites(axesSpec, coordinateSystem, theme) {
-      const group = new THREE.Group();
-      group.name = "axis-labels";
-      const sprites = [];
+      axisLabelLayer.innerHTML = "";
+      const labels = [];
       const axisStyle = axesSpec?.style || {};
       const gridSpec = axesSpec?.grid || {};
       const domain = gridSpec.domainMode === "positive" || gridSpec.domainMode === "negative"
@@ -836,7 +1353,14 @@
         : (coordinateSystem?.domain || {});
       const breaks = gridSpec.majorBreaks || {};
       const origin = coordinateSystem?.origin || [0, 0, 0];
-      const color = theme?.axis?.text || "#374151";
+      const textStyle = theme?.axis?.text || {};
+      const titleStyle = theme?.axis?.title || {};
+      const color = themeColor(textStyle, "#4D4D4D", "colour");
+      const tickSize = theme?.axis?.text?.size || 9;
+      const titleSize = theme?.axis?.title?.size || 11;
+      const tickOffset = Number(axisStyle.tickOffset ?? 18);
+      const titleOffset = Number(axisStyle.titleOffset ?? 42);
+      const titlePosition = THREE.MathUtils.clamp(Number(axisStyle.titlePosition ?? 0.5), 0, 1);
 
       for (const axis of ["x", "y", "z"]) {
         if (axesSpec?.[axis]?.visible === false) continue;
@@ -845,50 +1369,99 @@
         if (axisStyle.labels !== false && axesSpec?.labelPlacement !== "none") {
           for (const value of values) {
             if (value < Math.min(...range) || value > Math.max(...range)) continue;
-            const position = axisPoint(axis, Number(value), origin);
-            const sprite = createAxisTextSprite(formatTick(value), {
-              size: 11,
+            const el = createAxisLabelElement(formatTick(value), {
+              size: tickSize,
               color,
-              background: true,
-              backgroundColor: "rgba(255,255,255,0.82)",
-              borderColor: "rgba(209,213,219,0.72)"
+              family: textStyle.family || "",
+              title: false
             });
-            sprite.position.fromArray(offsetAxisLabelPosition(axis, position, domain, 0.035));
-            group.add(sprite);
-            sprites.push(sprite);
+            axisLabelLayer.appendChild(el);
+            labels.push({ el, axis, value: Number(value), offset: tickOffset, title: false });
           }
         }
 
         if (axisStyle.titles !== false && axesSpec?.labelPlacement !== "none") {
           const title = axesSpec?.[axis]?.title || axis;
-          const end = axisPoint(axis, Number(range[1]), origin);
-          const sprite = createAxisTextSprite(title, {
-            size: 13,
-            color,
-            background: true,
-            backgroundColor: "rgba(255,255,255,0.9)",
-            borderColor: "rgba(209,213,219,0.82)"
+          const titleValue = Number(range[0]) + (Number(range[1]) - Number(range[0])) * titlePosition;
+          const el = createAxisLabelElement(title, {
+            size: titleSize,
+            color: themeColor(titleStyle, color, "colour"),
+            family: titleStyle.family || "",
+            title: true
           });
-          sprite.position.fromArray(offsetAxisLabelPosition(axis, end, domain, 0.075));
-          group.add(sprite);
-          sprites.push(sprite);
+          axisLabelLayer.appendChild(el);
+          labels.push({ el, axis, value: titleValue, offset: titleOffset, title: true });
         }
       }
 
-      scene.add(group);
       return {
-        group,
         update() {
           if (!camera) return;
           const rect = renderer.domElement.getBoundingClientRect();
           const width = Math.max(rect.width, 1);
           const height = Math.max(rect.height, 1);
-          for (const sprite of sprites) {
-            updateAbsLabelSpriteScale(sprite, sprite.position, camera, width, height);
-            const ndc = sprite.position.clone().project(camera);
-            sprite.visible = Number.isFinite(ndc.z) && ndc.z >= -1 && ndc.z <= 1;
+          const edges = selectAxisEdges(domain, width, height);
+          for (const item of labels) {
+            positionAxisLabel(item, edges[item.axis], width, height);
           }
         }
+      };
+    }
+
+    function createAxisLabelElement(text, style) {
+      const el = document.createElement("div");
+      el.className = `scene3d-axis-label${style.title ? " scene3d-axis-title" : ""}`;
+      el.textContent = text;
+      el.style.fontSize = `${style.size || 10}px`;
+      el.style.color = style.color || "#4D4D4D";
+      if (style.family) el.style.fontFamily = style.family;
+      return el;
+    }
+
+    function positionAxisLabel(item, edgeSpec, width, height) {
+      if (!edgeSpec) {
+        item.el.style.display = "none";
+        return;
+      }
+      const start = dataArrayToDisplayVector(edgeSpec.start);
+      const end = dataArrayToDisplayVector(edgeSpec.end);
+      const point = dataArrayToDisplayVector(edgePoint(edgeSpec, item.value));
+      const s = worldToViewport(start, width, height);
+      const e = worldToViewport(end, width, height);
+      const p = worldToViewport(point, width, height);
+      const dx = e.x - s.x;
+      const dy = e.y - s.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(p.z) || p.z < -1 || p.z > 1 || len < 0.5) {
+        item.el.style.display = "none";
+        return;
+      }
+      const ux = dx / len;
+      const uy = dy / len;
+      let nx = -uy;
+      let ny = ux;
+      const cx = width / 2;
+      const cy = height / 2;
+      if ((p.x - cx) * nx + (p.y - cy) * ny < 0) {
+        nx *= -1;
+        ny *= -1;
+      }
+      let angle = Math.atan2(uy, ux) * 180 / Math.PI;
+      if (angle > 90 || angle < -90) angle += 180;
+      const margin = item.title ? 28 : 18;
+      const x = Math.round(THREE.MathUtils.clamp(p.x + nx * item.offset, margin, width - margin) * 2) / 2;
+      const y = Math.round(THREE.MathUtils.clamp(p.y + ny * item.offset, margin, height - margin) * 2) / 2;
+      angle = Math.round(angle * 10) / 10;
+      item.el.style.display = "block";
+      item.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${angle}deg)`;
+    }
+
+    function worldToViewport(vec, width, height) {
+      const projected = vec.clone().project(camera);
+      return {
+        x: (projected.x * 0.5 + 0.5) * width,
+        y: (-projected.y * 0.5 + 0.5) * height,
+        z: projected.z
       };
     }
 
@@ -916,9 +1489,12 @@
       return Number(number.toPrecision(3)).toString();
     }
 
-    const gridLines = buildGridLines(sceneData.axes?.grid, sceneData.theme);
-    if (gridLines) scene.add(gridLines);
-    scene.add(buildAxisLines(sceneData.axes, sceneData.coordinateSystem, sceneData.theme));
+    const gridLines = sceneData.panels?.dynamicBackFaces === true
+      ? null
+      : buildGridLines(sceneData.axes?.grid, sceneData.theme);
+    if (gridLines) sceneGroup.add(gridLines);
+    const axisLines = buildAxisLines(sceneData.axes, sceneData.coordinateSystem, sceneData.theme);
+    sceneGroup.add(axisLines.group);
     const axisSprites = buildAxisSprites(sceneData.axes, sceneData.coordinateSystem, sceneData.theme);
 
     function buildAbsAnnotations(sceneData, camera, renderer) {
@@ -965,7 +1541,8 @@
           let point = null;
           if (pointStyle.visible !== false) {
             const pointGeometry = new THREE.BufferGeometry();
-            pointGeometry.setAttribute("position", new THREE.Float32BufferAttribute(anchor.position || [0, 0, 0], 3));
+            const anchorDisplay = dataArrayToDisplayVector(anchor.position || [0, 0, 0]);
+            pointGeometry.setAttribute("position", new THREE.Float32BufferAttribute(anchorDisplay.toArray(), 3));
             point = new THREE.Points(pointGeometry, pointMaterial.clone());
             group.add(point);
           }
@@ -993,7 +1570,7 @@
         const height = Math.max(rect.height, 1);
 
         for (const item of annotations) {
-          const anchorWorld = new THREE.Vector3().fromArray(item.anchor.position || [0, 0, 0]);
+          const anchorWorld = dataArrayToDisplayVector(item.anchor.position || [0, 0, 0]);
           const anchorNdc = anchorWorld.clone().project(camera);
           const route = item.anchor.route || item.layer.route || [];
           let sx = (anchorNdc.x + 1) * 0.5 * width;
@@ -1185,7 +1762,7 @@
       radius: Math.max(fit.radius * 3.5, 1),
       azimuth: 0,
       elevation: 0,
-      baseSpan: Math.max(fit.radius * 2.6 / (initialCamera.zoom || 1), 1)
+      baseSpan: Math.max(fit.radius * (1.55 + 2 * (sceneData.view?.camera?.padding ?? 0.08)) / (initialCamera.zoom || 1), 1)
     };
 
     function makeCamera() {
@@ -1196,27 +1773,34 @@
       const zoom = initialCamera.zoom || 1;
 
       if (projection === "perspective") {
-        return new THREE.PerspectiveCamera(45, aspect, 0.01, 10000);
+        return new THREE.PerspectiveCamera(
+          initialCamera.fov || 35,
+          aspect,
+          initialCamera.near || 0.01,
+          initialCamera.far || 10000
+        );
       }
 
-      const span = Math.max(fit.radius * 2.6 / zoom, 1);
+      const span = orbit.baseSpan;
       return new THREE.OrthographicCamera(
         -span * aspect / 2,
         span * aspect / 2,
         span / 2,
         -span / 2,
-        -10000,
-        10000
+        initialCamera.near ? -initialCamera.far : -10000,
+        initialCamera.far || 10000
       );
     }
 
     function resetView() {
       const pos = initialCamera.position || [1.8, -2.4, 1.6];
       const target = initialCamera.target || [fit.center.x, fit.center.y, fit.center.z];
+      const displayPos = dataArrayToDisplayVector(pos);
+      const displayTarget = dataArrayToDisplayVector(target);
       const distance = Math.max(fit.radius * 3.5, 1);
-      const direction = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize();
+      const direction = displayPos.clone().sub(displayTarget).normalize();
 
-      orbit.target.set(target[0], target[1], target[2]);
+      orbit.target.copy(displayTarget);
       camera.position.copy(orbit.target.clone().add(direction.multiplyScalar(distance)));
       camera.up.fromArray(initialCamera.up || [0, 0, 1]);
       setOrbitFromCamera();
@@ -1257,7 +1841,7 @@
       if (camera.isPerspectiveCamera) {
         camera.aspect = aspect;
       } else {
-        const span = Math.max(fit.radius * 2.6 / (initialCamera.zoom || 1), 1);
+        const span = orbit.baseSpan;
         camera.left = -span * aspect / 2;
         camera.right = span * aspect / 2;
         camera.top = span / 2;
@@ -1328,6 +1912,8 @@
     }
 
     function render() {
+      scenePanels?.update();
+      axisLines?.update();
       axisSprites?.update();
       absAnnotations?.update();
       renderer.render(scene, camera);
@@ -1349,6 +1935,8 @@
     controls = installPointerOrbitControls();
     fallback.remove();
     status.textContent = "Scene3D renderer ready; drag to rotate, wheel to zoom";
+    window.__scene3dReady = true;
+    document.body.dataset.rendererReady = "true";
 
     window.addEventListener("resize", resize);
     document.getElementById("reset-view").addEventListener("click", resetView);
@@ -1359,12 +1947,16 @@
     document.getElementById("export-view").addEventListener("click", () => {
       const view = {
         schemaVersion: "0.1.0",
+        view: sceneData.view?.camera?.view || null,
         camera: {
           projection: camera.isPerspectiveCamera ? "perspective" : "orthographic",
           position: camera.position.toArray(),
           target: orbit.target.toArray(),
           up: camera.up.toArray(),
-          zoom: camera.zoom || initialCamera.zoom || 1
+          zoom: camera.zoom || initialCamera.zoom || 1,
+          azimuth: sceneData.view?.camera?.azimuth,
+          elevation: sceneData.view?.camera?.elevation,
+          roll: sceneData.view?.camera?.roll
         }
       };
       download("view.json", "application/json", JSON.stringify(view, null, 2));
