@@ -17,7 +17,10 @@ as_scene3d <- function(plot) {
       layer$type,
       point_cloud = compile_point_cloud_layer(plot, layer, i, theme),
       surface_grid = compile_surface_grid_layer(layer, i, theme),
+      surface_mesh = compile_surface_mesh_layer(layer, i, theme),
       surface_stat = compile_surface_stat_layer(plot, layer, i, theme),
+      contour_stack = compile_contour_stack_layer(layer, i, theme),
+      ridgeline_stack = compile_ridgeline_stack_layer(layer, i, theme),
       face_projection = compile_face_projection_layer(plot, layer, i, theme),
       abs_annotation = compile_abs_annotation_layer(plot, layer, i, theme),
       stop("Unsupported layer type: ", layer$type, call. = FALSE)
@@ -243,6 +246,22 @@ compute_layer_bounds <- function(layer) {
     ))
   }
 
+  if (identical(layer$type, "surface_mesh")) {
+    vertices <- matrix(layer$data$vertices, ncol = 3L, byrow = TRUE)
+    return(list(
+      min = c(x = min(vertices[, 1]), y = min(vertices[, 2]), z = min(vertices[, 3])),
+      max = c(x = max(vertices[, 1]), y = max(vertices[, 2]), z = max(vertices[, 3]))
+    ))
+  }
+
+  if (identical(layer$type, "contour_stack")) {
+    return(compute_polyline_bounds(layer$data$polylines))
+  }
+
+  if (identical(layer$type, "ridgeline_stack")) {
+    return(compute_polyline_bounds(layer$data$profiles))
+  }
+
   if (identical(layer$type, "abs_annotation")) {
     anchors <- layer$data$anchors
     positions <- do.call(rbind, lapply(anchors, function(anchor) unlist(anchor$position)))
@@ -266,6 +285,19 @@ compute_layer_bounds <- function(layer) {
   }
 
   NULL
+}
+
+compute_polyline_bounds <- function(polylines) {
+  if (length(polylines) == 0L) {
+    return(NULL)
+  }
+  xs <- unlist(lapply(polylines, function(polyline) polyline$x), use.names = FALSE)
+  ys <- unlist(lapply(polylines, function(polyline) polyline$y), use.names = FALSE)
+  zs <- unlist(lapply(polylines, function(polyline) polyline$z), use.names = FALSE)
+  list(
+    min = c(x = min(xs), y = min(ys), z = min(zs)),
+    max = c(x = max(xs), y = max(ys), z = max(zs))
+  )
 }
 
 compile_coord_protocol <- function(coord, bounds) {

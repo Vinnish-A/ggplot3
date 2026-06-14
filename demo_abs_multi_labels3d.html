@@ -176,7 +176,7 @@
   <script id="scene3d-data" type="application/json">
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614221225",
+  "sceneId": "scene-20260614222435",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -850,6 +850,79 @@
       world.add(new THREE.Mesh(geometry, material));
     }
 
+    function addSurfaceMesh(layer) {
+      const data = layer.data || {};
+      const positions = new Float32Array((data.vertices || []).map(Number));
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setIndex((data.faces || []).map((value) => Number(value)));
+
+      if (data.normals && data.normals.length === positions.length) {
+        geometry.setAttribute("normal", new THREE.Float32BufferAttribute(data.normals.map(Number), 3));
+      } else {
+        geometry.computeVertexNormals();
+      }
+
+      let vertexColors = false;
+      if (data.colors && data.colors.length * 3 === positions.length) {
+        const colors = new Float32Array(data.colors.length * 3);
+        const color = new THREE.Color();
+        for (let i = 0; i < data.colors.length; i += 1) {
+          color.set(data.colors[i] || layer.material?.fill || "#4477AA");
+          colors[i * 3] = color.r;
+          colors[i * 3 + 1] = color.g;
+          colors[i * 3 + 2] = color.b;
+        }
+        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        vertexColors = true;
+      }
+
+      for (let i = 0; i < positions.length; i += 3) {
+        includePoint(positions[i], positions[i + 1], positions[i + 2]);
+      }
+
+      const opacity = layer.material?.opacity ?? 0.65;
+      const material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(layer.material?.fill || "#4477AA"),
+        vertexColors,
+        opacity,
+        transparent: opacity < 1,
+        side: THREE.DoubleSide,
+        depthWrite: opacity >= 1
+      });
+      world.add(new THREE.Mesh(geometry, material));
+    }
+
+    function addPolylineStack(layer, key) {
+      const items = layer.data?.[key] || [];
+      const material = new THREE.LineBasicMaterial({
+        color: new THREE.Color(layer.style?.color || "#374151"),
+        transparent: (layer.style?.opacity ?? 1) < 1,
+        opacity: layer.style?.opacity ?? 1
+      });
+      const group = new THREE.Group();
+      group.name = layer.name || layer.type;
+
+      for (const item of items) {
+        const n = Math.min(item.x?.length || 0, item.y?.length || 0, item.z?.length || 0);
+        if (n < 2) continue;
+        const positions = new Float32Array(n * 3);
+        for (let i = 0; i < n; i += 1) {
+          const x = Number(item.x[i]);
+          const y = Number(item.y[i]);
+          const z = Number(item.z[i]);
+          positions[i * 3] = x;
+          positions[i * 3 + 1] = y;
+          positions[i * 3 + 2] = z;
+          includePoint(x, y, z);
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        group.add(new THREE.Line(geometry, material.clone()));
+      }
+      world.add(group);
+    }
+
     function addFaceProjection(layer) {
       const data = layer.data || {};
       const x = data.x || [];
@@ -997,6 +1070,9 @@
       if (layer.visible === false) continue;
       if (layer.type === "point_cloud") addPointCloud(layer);
       if (layer.type === "surface_grid") addSurfaceGrid(layer);
+      if (layer.type === "surface_mesh") addSurfaceMesh(layer);
+      if (layer.type === "contour_stack") addPolylineStack(layer, "polylines");
+      if (layer.type === "ridgeline_stack") addPolylineStack(layer, "profiles");
       if (layer.type === "face_projection") addFaceProjection(layer);
     }
 
@@ -1136,9 +1212,101 @@
       return out;
     }
 
+    function buildAxisSprites(axesSpec, coordinateSystem, theme) {
+      const group = new THREE.Group();
+      group.name = "axis-labels";
+      const sprites = [];
+      const axisStyle = axesSpec?.style || {};
+      const gridSpec = axesSpec?.grid || {};
+      const domain = gridSpec.domainMode === "positive" || gridSpec.domainMode === "negative"
+        ? (gridSpec.domain || coordinateSystem?.domain || {})
+        : (coordinateSystem?.domain || {});
+      const breaks = gridSpec.majorBreaks || {};
+      const origin = coordinateSystem?.origin || [0, 0, 0];
+      const color = theme?.axis?.text || "#374151";
+
+      for (const axis of ["x", "y", "z"]) {
+        if (axesSpec?.[axis]?.visible === false) continue;
+        const range = domain[axis] || [-1, 1];
+        const values = breaks[axis] || niceBreaks(range);
+        if (axisStyle.labels !== false && axesSpec?.labelPlacement !== "none") {
+          for (const value of values) {
+            if (value < Math.min(...range) || value > Math.max(...range)) continue;
+            const position = axisPoint(axis, Number(value), origin);
+            const sprite = createAxisTextSprite(formatTick(value), {
+              size: 11,
+              color,
+              background: true,
+              backgroundColor: "rgba(255,255,255,0.82)",
+              borderColor: "rgba(209,213,219,0.72)"
+            });
+            sprite.position.fromArray(offsetAxisLabelPosition(axis, position, domain, 0.035));
+            group.add(sprite);
+            sprites.push(sprite);
+          }
+        }
+
+        if (axisStyle.titles !== false && axesSpec?.labelPlacement !== "none") {
+          const title = axesSpec?.[axis]?.title || axis;
+          const end = axisPoint(axis, Number(range[1]), origin);
+          const sprite = createAxisTextSprite(title, {
+            size: 13,
+            color,
+            background: true,
+            backgroundColor: "rgba(255,255,255,0.9)",
+            borderColor: "rgba(209,213,219,0.82)"
+          });
+          sprite.position.fromArray(offsetAxisLabelPosition(axis, end, domain, 0.075));
+          group.add(sprite);
+          sprites.push(sprite);
+        }
+      }
+
+      scene.add(group);
+      return {
+        group,
+        update() {
+          if (!camera) return;
+          const rect = renderer.domElement.getBoundingClientRect();
+          const width = Math.max(rect.width, 1);
+          const height = Math.max(rect.height, 1);
+          for (const sprite of sprites) {
+            updateAbsLabelSpriteScale(sprite, sprite.position, camera, width, height);
+            const ndc = sprite.position.clone().project(camera);
+            sprite.visible = Number.isFinite(ndc.z) && ndc.z >= -1 && ndc.z <= 1;
+          }
+        }
+      };
+    }
+
+    function axisPoint(axis, value, origin) {
+      const point = [origin[0], origin[1], origin[2]];
+      point[axisIndex(axis)] = value;
+      return point;
+    }
+
+    function offsetAxisLabelPosition(axis, point, domain, fraction) {
+      const out = [point[0], point[1], point[2]];
+      const sideAxes = ["x", "y", "z"].filter((candidate) => candidate !== axis);
+      for (const sideAxis of sideAxes) {
+        const range = domain[sideAxis] || [-1, 1];
+        const span = Math.max(Math.abs(Number(range[1]) - Number(range[0])), 1);
+        out[axisIndex(sideAxis)] += span * fraction;
+      }
+      return out;
+    }
+
+    function formatTick(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "";
+      if (Math.abs(number) >= 100 || Math.abs(number) < 0.01 && number !== 0) return number.toExponential(1);
+      return Number(number.toPrecision(3)).toString();
+    }
+
     const gridLines = buildGridLines(sceneData.axes?.grid, sceneData.theme);
     if (gridLines) scene.add(gridLines);
     scene.add(buildAxisLines(sceneData.axes, sceneData.coordinateSystem, sceneData.theme));
+    const axisSprites = buildAxisSprites(sceneData.axes, sceneData.coordinateSystem, sceneData.theme);
 
     function buildAbsAnnotations(sceneData, camera, renderer) {
       const group = new THREE.Group();
@@ -1351,6 +1519,12 @@
       return sprite;
     }
 
+    function createAxisTextSprite(text, textStyle) {
+      const sprite = createAbsLabelSprite(text, textStyle);
+      sprite.renderOrder = 900;
+      return sprite;
+    }
+
     function updateAbsLabelSpriteScale(sprite, worldPosition, camera, width, height) {
       let worldPerPixel;
       if (camera.isOrthographicCamera) {
@@ -1541,6 +1715,7 @@
     }
 
     function render() {
+      axisSprites?.update();
       absAnnotations?.update();
       renderer.render(scene, camera);
     }

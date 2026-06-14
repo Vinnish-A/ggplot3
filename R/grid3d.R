@@ -73,6 +73,9 @@ surface_mesh <- function(vertices, faces, normals = NULL, colors = NULL,
   if (any(!is.finite(vertices)) || any(!is.finite(faces))) {
     stop("vertices and faces must contain only finite values.", call. = FALSE)
   }
+  if (any(faces != as.integer(faces)) || any(faces < 1L) || any(faces > nrow(vertices))) {
+    stop("faces must contain 1-based vertex indices within vertices.", call. = FALSE)
+  }
   if (!is.null(normals) && (!is.matrix(normals) || !is.numeric(normals) || !identical(dim(normals), dim(vertices)))) {
     stop("normals must be NULL or a numeric matrix matching vertices.", call. = FALSE)
   }

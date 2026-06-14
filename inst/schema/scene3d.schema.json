@@ -25,6 +25,9 @@
         "oneOf": [
           { "$ref": "#/$defs/pointCloudLayer" },
           { "$ref": "#/$defs/surfaceGridLayer" },
+          { "$ref": "#/$defs/surfaceMeshLayer" },
+          { "$ref": "#/$defs/contourStackLayer" },
+          { "$ref": "#/$defs/ridgelineStackLayer" },
           { "$ref": "#/$defs/faceProjectionLayer" },
           { "$ref": "#/$defs/absAnnotationLayer" }
         ]
@@ -242,6 +245,104 @@
             },
             "text": { "type": "object" }
           }
+        }
+      }
+    },
+    "surfaceMeshLayer": {
+      "type": "object",
+      "required": ["id", "type", "name", "visible", "data", "material"],
+      "properties": {
+        "type": { "const": "surface_mesh" },
+        "data": {
+          "type": "object",
+          "required": ["kind", "encoding", "vertices", "faces", "vertexCount", "faceCount"],
+          "properties": {
+            "kind": { "const": "mesh3d" },
+            "encoding": { "const": "json-mesh" },
+            "vertices": { "type": "array", "items": { "type": "number" } },
+            "faces": { "type": "array", "items": { "type": "integer" } },
+            "vertexCount": { "type": "integer" },
+            "faceCount": { "type": "integer" },
+            "normals": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "number" } },
+                { "type": "null" }
+              ]
+            },
+            "colors": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "contourStackLayer": {
+      "type": "object",
+      "required": ["id", "type", "name", "visible", "space", "data", "style"],
+      "properties": {
+        "type": { "const": "contour_stack" },
+        "space": {
+          "type": "object",
+          "properties": {
+            "type": { "const": "grid_surface" }
+          }
+        },
+        "data": {
+          "type": "object",
+          "required": ["kind", "encoding", "polylines"],
+          "properties": {
+            "kind": { "const": "contour_stack" },
+            "encoding": { "const": "json-polylines" },
+            "polylines": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/polyline3" }
+            }
+          }
+        },
+        "style": { "type": "object" }
+      }
+    },
+    "ridgelineStackLayer": {
+      "type": "object",
+      "required": ["id", "type", "name", "visible", "space", "data", "style"],
+      "properties": {
+        "type": { "const": "ridgeline_stack" },
+        "space": {
+          "type": "object",
+          "properties": {
+            "type": { "const": "grid_surface" }
+          }
+        },
+        "data": {
+          "type": "object",
+          "required": ["kind", "encoding", "profiles"],
+          "properties": {
+            "kind": { "const": "ridgeline_stack" },
+            "encoding": { "const": "json-polylines" },
+            "profiles": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/polyline3" }
+            }
+          }
+        },
+        "style": { "type": "object" }
+      }
+    },
+    "polyline3": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "array", "items": { "type": "number" } },
+        "y": { "type": "array", "items": { "type": "number" } },
+        "z": { "type": "array", "items": { "type": "number" } },
+        "level": {
+          "anyOf": [
+            { "type": "number" },
+            { "type": "null" }
+          ]
         }
       }
     },

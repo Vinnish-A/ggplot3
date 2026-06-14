@@ -14,7 +14,7 @@ find_package_root <- function(path = getwd()) {
 
 root <- find_package_root()
 source_files <- file.path(root, "R", c(
-  "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "ggplot_adapter.R", "layers.R", "abs3d.R", "surface_stats.R", "face_projection.R", "build.R", "export.R", "demo_data.R"
+  "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "ggplot_adapter.R", "layers.R", "abs3d.R", "surface_stats.R", "surface_geoms.R", "face_projection.R", "build.R", "export.R", "demo_data.R"
 ))
 invisible(lapply(source_files, source))
 
@@ -325,6 +325,56 @@ test_that("surface objects declare reusable protocol classes", {
   expect_s3_class(ridgeline_stack(list()), "ggplot3scene_ridgeline_stack")
 })
 
+test_that("mesh contour and ridgeline geoms compile to Scene3D surface protocols", {
+  vertices <- matrix(
+    c(
+      0, 0, 0,
+      1, 0, 0.2,
+      0, 1, 0.1,
+      1, 1, 0.3
+    ),
+    ncol = 3,
+    byrow = TRUE
+  )
+  mesh <- surface_mesh(vertices, matrix(c(1, 2, 3, 2, 4, 3), ncol = 3, byrow = TRUE))
+  contours <- contour_stack(
+    list(data.frame(x = c(0, 0.5, 1), y = c(0, 0.4, 1), z = c(0.15, 0.15, 0.15))),
+    levels = 0.15
+  )
+  ridges <- ridgeline_stack(
+    list(data.frame(x = c(0, 0.5, 1), y = c(1.2, 1.2, 1.2), z = c(0, 0.3, 0)))
+  )
+
+  p <- ggplot3() +
+    geom_surface_mesh3d(mesh, fill = "#99CCEE", alpha = 0.5) +
+    geom_contour_stack3d(contours, colour = "#111111", line_width = 2) +
+    geom_ridgeline3d(ridges, colour = "#CC3311", line_width = 2)
+  scene <- as_scene3d(p)
+
+  expect_equal(scene$layers[[1]]$type, "surface_mesh")
+  expect_equal(scene$layers[[1]]$data$kind, "mesh3d")
+  expect_equal(scene$layers[[1]]$data$vertexCount, 4)
+  expect_equal(scene$layers[[1]]$data$faces, c(0, 1, 2, 1, 3, 2))
+  expect_equal(scene$layers[[2]]$type, "contour_stack")
+  expect_equal(scene$layers[[2]]$data$kind, "contour_stack")
+  expect_equal(scene$layers[[2]]$data$polylines[[1]]$level, 0.15)
+  expect_equal(scene$layers[[3]]$type, "ridgeline_stack")
+  expect_equal(scene$layers[[3]]$data$kind, "ridgeline_stack")
+  expect_equal(scene$coordinateSystem$domain$x, c(0, 1))
+  expect_equal(scene$coordinateSystem$domain$y, c(0, 1.2))
+  expect_equal(scene$coordinateSystem$domain$z, c(0, 0.3))
+
+  json <- jsonlite::toJSON(scene, auto_unbox = TRUE)
+  expect_false(grepl("ggplot3scene_surface_mesh", json, fixed = TRUE))
+  expect_false(grepl("ggplot3scene_contour_stack", json, fixed = TRUE))
+  expect_false(grepl("ggplot3scene_ridgeline_stack", json, fixed = TRUE))
+})
+
+test_that("surface mesh rejects invalid face indices", {
+  vertices <- matrix(c(0, 0, 0, 1, 0, 0, 0, 1, 0), ncol = 3, byrow = TRUE)
+  expect_error(surface_mesh(vertices, matrix(c(1, 2, 4), ncol = 3)), "1-based vertex indices")
+})
+
 test_that("surface stats compile to surface_grid with R stat metadata", {
   set.seed(1)
   df <- data.frame(
@@ -550,6 +600,8 @@ test_that("exported HTML uses custom grid and axis builders", {
   expect_false(grepl("AxesHelper", html, fixed = TRUE))
   expect_true(grepl("buildGridLines", html, fixed = TRUE))
   expect_true(grepl("buildAxisLines", html, fixed = TRUE))
+  expect_true(grepl("buildAxisSprites", html, fixed = TRUE))
+  expect_true(grepl("createAxisTextSprite", html, fixed = TRUE))
 })
 
 test_that("UMAP-style scene includes positive grid and surface alpha", {
@@ -721,6 +773,8 @@ test_that("exported HTML contains ABS renderer builder", {
   expect_true(grepl("SpriteMaterial", html, fixed = TRUE))
   expect_true(grepl("setDrawRange", html, fixed = TRUE))
   expect_true(grepl("buildSurfaceGridIndices", html, fixed = TRUE))
+  expect_true(grepl("addSurfaceMesh", html, fixed = TRUE))
+  expect_true(grepl("addPolylineStack", html, fixed = TRUE))
   expect_true(grepl("addFaceProjection", html, fixed = TRUE))
   expect_true(grepl("faceProjectionPoint", html, fixed = TRUE))
   expect_true(grepl("buildGuides", html, fixed = TRUE))

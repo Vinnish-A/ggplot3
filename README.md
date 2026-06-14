@@ -15,6 +15,7 @@ engine.
 - ggplot2-like aes input normalization and a narrow `ggplot3_from_ggplot()` adapter.
 - `geom_point3d()` point cloud layer.
 - `geom_surface_grid3d()` gridded surface layer, preferably via `grid2d()`.
+- `geom_surface_mesh3d()`, `geom_contour_stack3d()`, and `geom_ridgeline3d()` for non-grid surface objects.
 - `grid2d()` reusable surface grid objects with optional alpha/mask payloads.
 - R-side surface-producing stats: `stat_density_surface3d()`, `stat_function_surface3d()`, and `stat_smooth_surface3d()`.
 - Scene3D-native face projections with `geom_face_density3d()` and `position_on_plane3d()`.
@@ -174,6 +175,26 @@ This writes:
 
 - `demo_surface_stats3d.html`
 - `demo_surface_stats3d.scene.json`
+
+Surface geoms can also render mesh, contour, and ridgeline surface objects:
+
+```r
+ggplot3() +
+  geom_surface_mesh3d(surface_mesh(vertices, faces)) +
+  geom_contour_stack3d(contour_stack(polylines, levels = levels)) +
+  geom_ridgeline3d(ridgeline_stack(profiles))
+```
+
+Run the surface geom demo:
+
+```sh
+Rscript examples/demo_surface_geoms3d.R
+```
+
+This writes:
+
+- `demo_surface_geoms3d.html`
+- `demo_surface_geoms3d.scene.json`
 
 ## Face projection
 
