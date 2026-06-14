@@ -21,6 +21,7 @@ engine.
 - `theme_3d()` and `theme_3d_scientific()` JSON-compatible theme defaults.
 - `theme_3d_umap()` visual defaults for UMAP-style scenes.
 - `element_material_3d()` and `element_light_3d()` for material/light theme entries.
+- ABS annotations with `geom_abs_label3d()` and composable `abs_route()` commands.
 - `as_scene3d()` compiler boundary.
 - `write_scene_json()` for Scene3D JSON.
 - `export_html()` for a standalone HTML file with embedded scene data.
@@ -122,6 +123,55 @@ This writes:
 - `demo_umap_positive_grid_fade.html`
 - `demo_umap_positive_grid_fade.scene.json`
 
+## ABS anchored annotations
+
+ABS means anchored billboard space: the annotation starts from a real world-space
+anchor, then follows screen-space route commands, and ends in a screen-facing
+label. The leader is rendered as depth-tested WebGL geometry, so foreground
+points can occlude it. The label is rendered as a WebGL sprite by default so it
+stays in sync with camera motion.
+
+```r
+label_df <- data.frame(x = 0, y = 0, z = 0, label = "cluster core")
+
+p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
+  geom_point3d() +
+  geom_abs_label3d(
+    data = label_df,
+    mapping = aes3(x, y, z = z, label = label),
+    route = abs_route(abs_anchor(), abs_up(72), abs_right(150)),
+    leader_occlusion = "depth-test",
+    anchor_occlusion = "depth-test",
+    label_occlusion = "none"
+  )
+```
+
+The older shorthand remains valid:
+
+```r
+abs_route(up = 72, right = 150)
+```
+
+ABS theme entries control visual defaults only:
+
+```r
+theme_3d(
+  abs.line = element_abs_line(color = "#111827", width = 4),
+  abs.text = element_abs_text(size = 12),
+  abs.label.background = element_abs_label_background(fill = "#FFFFFF")
+)
+```
+
+Theme does not control anchor position, route, occlusion, or label data.
+
+Run the ABS demos:
+
+```sh
+Rscript examples/demo_abs_label3d.R
+Rscript examples/demo_abs_occlusion3d.R
+Rscript examples/demo_abs_multi_labels3d.R
+```
+
 ## Run Tests
 
 ```sh
@@ -140,6 +190,7 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 - Scene3D schema is intentionally minimal.
 - Theme3D intentionally does not control camera, projection, stats, scale domains, or data transforms.
 - `coord_umap3d()` controls display conventions only; UMAP computation is out of scope.
+- ABS annotations are stable enough for anchored labels, but collision avoidance is not implemented yet.
 
 ## Roadmap
 

@@ -124,7 +124,7 @@
   <script id="scene3d-data" type="application/json">
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614203119",
+  "sceneId": "scene-20260614214432",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -267,6 +267,29 @@
         "fill": "#4477AA",
         "opacity": 0.72,
         "side": "double"
+      }
+    },
+    "abs": {
+      "line": {
+        "color": "#374151",
+        "width": 2,
+        "opacity": 1
+      },
+      "point": {
+        "color": "#374151",
+        "size": 5,
+        "visible": true
+      },
+      "text": {
+        "color": "#111827",
+        "size": 12,
+        "opacity": 1
+      },
+      "label.background": {
+        "fill": "#FFFFFF",
+        "borderColor": "#D1D5DB",
+        "padding": [7, 5],
+        "visible": true
       }
     },
     "light": {
@@ -636,31 +659,35 @@
         const lineStyle = style.line || {};
         const pointStyle = style.point || {};
         const textStyle = style.text || {};
-        const lineMaterial = new THREE.LineBasicMaterial({
+        const occlusion = layer.occlusion || {};
+        const leaderDepthTest = lineStyle.depthTest ?? (occlusion.leader || layer.space?.occlusion) === "depth-test";
+        const anchorDepthTest = pointStyle.depthTest ?? (occlusion.anchor || layer.space?.occlusion) === "depth-test";
+        const labelDepthTest = textStyle.depthTest ?? (occlusion.label || "none") === "depth-test";
+        const leaderMaterial = new THREE.MeshBasicMaterial({
           color: new THREE.Color(lineStyle.color || "#111827"),
           transparent: (lineStyle.opacity ?? 1) < 1,
           opacity: lineStyle.opacity ?? 1,
-          linewidth: lineStyle.width || 2,
-          depthTest: lineStyle.depthTest !== false,
-          depthWrite: false
+          depthTest: leaderDepthTest,
+          depthWrite: false,
+          side: THREE.DoubleSide
         });
         const pointMaterial = new THREE.PointsMaterial({
           color: new THREE.Color(pointStyle.color || "#111827"),
           size: pointStyle.size || 5,
           sizeAttenuation: false,
-          depthTest: lineStyle.depthTest !== false,
+          depthTest: anchorDepthTest,
           depthWrite: true
         });
 
         for (const anchor of layer.data?.anchors || []) {
           const route = anchor.route || layer.route || [];
           const maxSegments = Math.max(1, route.length);
-          const linePositions = new Float32Array(maxSegments * 2 * 3);
+          const leaderPositions = new Float32Array(maxSegments * 6 * 3);
           const geometry = new THREE.BufferGeometry();
-          geometry.setAttribute("position", new THREE.BufferAttribute(linePositions, 3));
-          geometry.setDrawRange(0, 2);
-          const line = new THREE.Line(geometry, lineMaterial.clone());
-          group.add(line);
+          geometry.setAttribute("position", new THREE.BufferAttribute(leaderPositions, 3));
+          geometry.setDrawRange(0, 6);
+          const leader = new THREE.Mesh(geometry, leaderMaterial.clone());
+          group.add(leader);
 
           let point = null;
           if (pointStyle.visible !== false) {
@@ -676,10 +703,10 @@
           annotations.push({
             layer,
             anchor,
-            line,
+            leader,
             point,
             labelSprite,
-            linePositions,
+            leaderPositions,
             maxSegments
           });
         }
@@ -714,6 +741,9 @@
               sx += Number(command.dx || 0);
             } else if (command.op === "screen_left") {
               sx -= Number(command.dx || 0);
+            } else if (command.op === "screen_offset") {
+              sx += Number(command.dx || 0);
+              sy += Number(command.dy || 0);
             } else {
               continue;
             }
@@ -722,20 +752,26 @@
           }
 
           let positionIndex = 0;
-          for (let i = 0; i < worldPoints.length - 1; i += 1) {
-            item.linePositions[positionIndex++] = worldPoints[i].x;
-            item.linePositions[positionIndex++] = worldPoints[i].y;
-            item.linePositions[positionIndex++] = worldPoints[i].z;
-            item.linePositions[positionIndex++] = worldPoints[i + 1].x;
-            item.linePositions[positionIndex++] = worldPoints[i + 1].y;
-            item.linePositions[positionIndex++] = worldPoints[i + 1].z;
+          const leaderWidth = Number(item.layer.style?.line?.width || 2);
+          for (let i = 0; i < screenPoints.length - 1; i += 1) {
+            positionIndex = writeRibbonSegment(
+              item.leaderPositions,
+              positionIndex,
+              screenPoints[i],
+              screenPoints[i + 1],
+              depth,
+              width,
+              height,
+              camera,
+              leaderWidth
+            );
           }
-          for (let i = positionIndex; i < item.linePositions.length; i += 1) {
-            item.linePositions[i] = 0;
+          for (let i = positionIndex; i < item.leaderPositions.length; i += 1) {
+            item.leaderPositions[i] = 0;
           }
-          item.line.geometry.setDrawRange(0, Math.max(0, (worldPoints.length - 1) * 2));
-          item.line.geometry.attributes.position.needsUpdate = true;
-          item.line.geometry.computeBoundingSphere();
+          item.leader.geometry.setDrawRange(0, Math.max(0, positionIndex / 3));
+          item.leader.geometry.attributes.position.needsUpdate = true;
+          item.leader.geometry.computeBoundingSphere();
 
           const labelPoint = screenPoints[screenPoints.length - 1] || screenPoints[0];
           const labelOffset = item.anchor.label?.offset || item.layer.label?.offset || [12, 0];
@@ -751,6 +787,31 @@
       }
 
       return { group, update };
+    }
+
+    function writeRibbonSegment(out, offset, a, b, ndcDepth, width, height, camera, widthPx) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(len) || len <= 0.001) return offset;
+      const half = Math.max(widthPx, 1) / 2;
+      const nx = -dy / len * half;
+      const ny = dx / len * half;
+
+      const p1 = unprojectScreenAtDepth(a.x + nx, a.y + ny, ndcDepth, width, height, camera);
+      const p2 = unprojectScreenAtDepth(a.x - nx, a.y - ny, ndcDepth, width, height, camera);
+      const p3 = unprojectScreenAtDepth(b.x + nx, b.y + ny, ndcDepth, width, height, camera);
+      const p4 = unprojectScreenAtDepth(b.x - nx, b.y - ny, ndcDepth, width, height, camera);
+      return writeTrianglePair(out, offset, p1, p2, p3, p2, p4, p3);
+    }
+
+    function writeTrianglePair(out, offset, ...points) {
+      for (const point of points) {
+        out[offset++] = point.x;
+        out[offset++] = point.y;
+        out[offset++] = point.z;
+      }
+      return offset;
     }
 
     function createAbsLabelSprite(text, textStyle) {
@@ -788,7 +849,7 @@
       const material = new THREE.SpriteMaterial({
         map: texture,
         transparent: true,
-        depthTest: false,
+        depthTest: textStyle.depthTest === true,
         depthWrite: false
       });
       const sprite = new THREE.Sprite(material);

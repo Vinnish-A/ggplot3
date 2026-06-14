@@ -237,6 +237,16 @@ compute_layer_bounds <- function(layer) {
     ))
   }
 
+  if (identical(layer$type, "abs_annotation")) {
+    anchors <- layer$data$anchors
+    positions <- do.call(rbind, lapply(anchors, function(anchor) unlist(anchor$position)))
+    colnames(positions) <- c("x", "y", "z")
+    return(list(
+      min = c(x = min(positions[, "x"]), y = min(positions[, "y"]), z = min(positions[, "z"])),
+      max = c(x = max(positions[, "x"]), y = max(positions[, "y"]), z = max(positions[, "z"]))
+    ))
+  }
+
   NULL
 }
 

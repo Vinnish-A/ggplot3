@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614203117",
+  "sceneId": "scene-20260614214431",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -140,6 +140,29 @@
         "fill": "#4477AA",
         "opacity": 0.65,
         "side": "double"
+      }
+    },
+    "abs": {
+      "line": {
+        "color": "#111827",
+        "width": 2,
+        "opacity": 1
+      },
+      "point": {
+        "color": "#111827",
+        "size": 5,
+        "visible": true
+      },
+      "text": {
+        "color": "#111827",
+        "size": 12,
+        "opacity": 1
+      },
+      "label.background": {
+        "fill": "#FFFFFF",
+        "borderColor": "#D1D5DB",
+        "padding": [7, 5],
+        "visible": true
       }
     },
     "light": {

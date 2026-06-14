@@ -383,10 +383,14 @@ test_that("abs_route returns pixel route commands", {
 
   expect_s3_class(route, "ggplot3scene_abs_route")
   expect_equal(route$units, "px")
-  expect_equal(route$commands[[2]]$op, "screen_up")
-  expect_equal(route$commands[[2]]$dy, 72)
-  expect_equal(route$commands[[3]]$op, "screen_right")
-  expect_equal(route$commands[[3]]$dx, 140)
+  expect_equal(route$commands[[2]], list(op = "screen_offset", dx = 0, dy = -72))
+  expect_equal(route$commands[[3]], list(op = "screen_offset", dx = 140, dy = 0))
+
+  route2 <- abs_route(abs_anchor(), abs_up(10), abs_right(20), abs_offset(-2, 3))
+  expect_equal(
+    vapply(route2$commands, function(command) command$op, character(1)),
+    c("move_anchor", "screen_offset", "screen_offset", "screen_offset")
+  )
 })
 
 test_that("geom_abs_label3d requires x y z and label aesthetics", {
@@ -406,19 +410,86 @@ test_that("as_scene3d emits ABS annotation anchors and screen route", {
   df <- data.frame(x = c(1, 2), y = c(2, 3), z = c(3, 4), label = c("A", "B"))
 
   p <- ggplot3(df, aes3(x, y, z = z, label = label)) +
-    geom_abs_label3d(route = abs_route(up = 64, right = 120), occlusion = "depth-test")
+    geom_abs_label3d(
+      route = abs_route(abs_anchor(), abs_up(64), abs_right(120)),
+      leader_occlusion = "depth-test",
+      label_occlusion = "none",
+      anchor_occlusion = "depth-test"
+    )
   scene <- as_scene3d(p)
   layer <- scene$layers[[1]]
 
   expect_equal(layer$type, "abs_annotation")
   expect_equal(layer$space$type, "anchored_billboard")
   expect_equal(layer$space$units, "px")
-  expect_equal(layer$space$occlusion, "depth-test")
+  expect_equal(layer$occlusion$anchor, "depth-test")
+  expect_equal(layer$occlusion$leader, "depth-test")
+  expect_equal(layer$occlusion$label, "none")
   expect_equal(layer$data$anchors[[1]]$position, c(1, 2, 3))
   expect_equal(layer$data$anchors[[1]]$label$text, "A")
-  expect_true(any(vapply(layer$route, function(command) identical(command$op, "screen_up"), logical(1))))
-  expect_true(any(vapply(layer$route, function(command) identical(command$op, "screen_right"), logical(1))))
+  expect_true(any(vapply(layer$route, function(command) identical(command$op, "screen_offset") && identical(command$dy, -64), logical(1))))
+  expect_true(any(vapply(layer$route, function(command) identical(command$op, "screen_offset") && identical(command$dx, 120), logical(1))))
   expect_true(layer$style$line$depthTest)
+  expect_equal(layer$style$line$geometry, "screen-ribbon")
+  expect_equal(layer$style$line$widthUnit, "px")
+  expect_true(layer$visibility$hideWhenAnchorOutsideFrustum)
+})
+
+test_that("ABS occlusion shorthand maps to component occlusion", {
+  df <- data.frame(x = 0, y = 0, z = 0, label = "A")
+
+  scene <- as_scene3d(
+    ggplot3(df, aes3(x, y, z = z, label = label)) +
+      geom_abs_label3d(occlusion = "none")
+  )
+  layer <- scene$layers[[1]]
+
+  expect_equal(layer$occlusion$anchor, "none")
+  expect_equal(layer$occlusion$leader, "none")
+  expect_equal(layer$occlusion$label, "none")
+  expect_false(layer$style$line$depthTest)
+})
+
+test_that("ABS anchors participate in scene bounds", {
+  point_df <- data.frame(x = 0, y = 0, z = 0)
+  label_df <- data.frame(x = 10, y = 20, z = 30, label = "far")
+
+  scene <- as_scene3d(
+    ggplot3(point_df, aes3(x, y, z = z)) +
+      geom_point3d() +
+      geom_abs_label3d(data = label_df, mapping = aes3(x, y, z = z, label = label)) +
+      coord_3d(origin_mode = "data_center")
+  )
+
+  expect_equal(scene$coordinateSystem$domain$x, c(0, 10))
+  expect_equal(scene$coordinateSystem$domain$y, c(0, 20))
+  expect_equal(scene$coordinateSystem$domain$z, c(0, 30))
+  expect_equal(scene$coordinateSystem$origin, c(5, 10, 15))
+})
+
+test_that("ABS style defaults come from theme visual elements", {
+  df <- data.frame(x = 0, y = 0, z = 0, label = "A")
+
+  scene <- as_scene3d(
+    ggplot3(df, aes3(x, y, z = z, label = label)) +
+      geom_abs_label3d() +
+      theme_3d(
+        abs.line = element_abs_line(color = "#AA0000", width = 9, opacity = 0.5),
+        abs.point = element_abs_point(color = "#00AA00", size = 8),
+        abs.text = element_abs_text(color = "#0000AA", size = 16),
+        abs.label.background = element_abs_label_background(fill = "#EEEEEE", borderColor = "#333333", padding = c(9, 6))
+      )
+  )
+  layer <- scene$layers[[1]]
+
+  expect_equal(layer$style$line$color, "#AA0000")
+  expect_equal(layer$style$line$width, 9)
+  expect_equal(layer$style$point$color, "#00AA00")
+  expect_equal(layer$style$point$size, 8)
+  expect_equal(layer$style$text$color, "#0000AA")
+  expect_equal(layer$style$text$size, 16)
+  expect_equal(layer$style$text$backgroundColor, "#EEEEEE")
+  expect_equal(layer$style$text$padding, c(9, 6))
 })
 
 test_that("ABS annotation does not mutate point data or theme", {
@@ -434,8 +505,11 @@ test_that("ABS annotation does not mutate point data or theme", {
   expect_equal(scene$layers[[1]]$type, "point_cloud")
   expect_equal(scene$layers[[1]]$data$columns$x, df$x)
   expect_equal(scene$layers[[2]]$type, "abs_annotation")
-  expect_true(is.null(scene$theme$abs))
-  expect_true(is.null(scene$theme$abs_annotation))
+  expect_false(is.null(scene$theme$abs$line))
+  expect_true(is.null(scene$theme$abs$anchor))
+  expect_true(is.null(scene$theme$abs$route))
+  expect_true(is.null(scene$theme$abs$occlusion))
+  expect_true(is.null(scene$theme$abs$label.text))
 })
 
 test_that("exported HTML contains ABS renderer builder", {
@@ -449,6 +523,8 @@ test_that("exported HTML contains ABS renderer builder", {
   expect_true(grepl("unprojectScreenAtDepth", html, fixed = TRUE))
   expect_true(grepl("addAxisWithArrow", html, fixed = TRUE))
   expect_true(grepl("createAbsLabelSprite", html, fixed = TRUE))
+  expect_true(grepl("writeRibbonSegment", html, fixed = TRUE))
+  expect_true(grepl("MeshBasicMaterial", html, fixed = TRUE))
   expect_true(grepl("CanvasTexture", html, fixed = TRUE))
   expect_true(grepl("SpriteMaterial", html, fixed = TRUE))
   expect_true(grepl("setDrawRange", html, fixed = TRUE))

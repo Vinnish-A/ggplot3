@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614203119",
+  "sceneId": "scene-20260614214434",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -48,8 +48,17 @@
       "space": {
         "type": "anchored_billboard",
         "units": "px",
-        "depthMode": "anchor-depth",
-        "occlusion": "depth-test"
+        "depthMode": "anchor-depth"
+      },
+      "occlusion": {
+        "anchor": "depth-test",
+        "leader": "depth-test",
+        "label": "none"
+      },
+      "visibility": {
+        "hideWhenAnchorOutsideFrustum": true,
+        "hideLeaderWhenAnchorOutsideFrustum": true,
+        "hideLabelWhenAnchorOutsideFrustum": true
       },
       "data": {
         "encoding": "json-abs",
@@ -62,12 +71,14 @@
                 "op": "move_anchor"
               },
               {
-                "op": "screen_up",
-                "dy": 72
+                "op": "screen_offset",
+                "dx": 0,
+                "dy": -72
               },
               {
-                "op": "screen_right",
-                "dx": 150
+                "op": "screen_offset",
+                "dx": 150,
+                "dy": 0
               }
             ],
             "label": {
@@ -84,12 +95,14 @@
           "op": "move_anchor"
         },
         {
-          "op": "screen_up",
-          "dy": 72
+          "op": "screen_offset",
+          "dx": 0,
+          "dy": -72
         },
         {
-          "op": "screen_right",
-          "dx": 150
+          "op": "screen_offset",
+          "dx": 150,
+          "dy": 0
         }
       ],
       "label": {
@@ -101,10 +114,13 @@
         "point": {
           "visible": true,
           "size": 6,
-          "color": "#111827"
+          "color": "#111827",
+          "depthTest": true
         },
         "line": {
           "width": 2,
+          "widthUnit": "px",
+          "geometry": "screen-ribbon",
           "opacity": 1,
           "color": "#111827",
           "depthTest": true
@@ -112,10 +128,13 @@
         "text": {
           "size": 12,
           "color": "#111827",
+          "opacity": 1,
           "background": true,
           "backgroundColor": "#FFFFFF",
           "borderColor": "#D1D5DB",
-          "billboard": true
+          "padding": [7, 5],
+          "billboard": true,
+          "depthTest": false
         }
       }
     }
@@ -194,6 +213,29 @@
         "fill": "#4477AA",
         "opacity": 0.65,
         "side": "double"
+      }
+    },
+    "abs": {
+      "line": {
+        "color": "#111827",
+        "width": 2,
+        "opacity": 1
+      },
+      "point": {
+        "color": "#111827",
+        "size": 5,
+        "visible": true
+      },
+      "text": {
+        "color": "#111827",
+        "size": 12,
+        "opacity": 1
+      },
+      "label.background": {
+        "fill": "#FFFFFF",
+        "borderColor": "#D1D5DB",
+        "padding": [7, 5],
+        "visible": true
       }
     },
     "light": {

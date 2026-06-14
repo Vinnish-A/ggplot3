@@ -19,6 +19,26 @@ element_light_3d <- function(color = "#FFFFFF", intensity = 1, position = NULL, 
   light
 }
 
+element_abs_line <- function(color = "#111827", width = 2, opacity = 1) {
+  list(color = color, width = width, opacity = opacity)
+}
+
+element_abs_point <- function(color = "#111827", size = 5, visible = TRUE) {
+  list(color = color, size = size, visible = visible)
+}
+
+element_abs_text <- function(color = "#111827", size = 12, opacity = 1) {
+  list(color = color, size = size, opacity = opacity)
+}
+
+element_abs_label_background <- function(fill = "#FFFFFF", borderColor = "#D1D5DB",
+                                         padding = c(7, 5), visible = TRUE) {
+  if (!is.numeric(padding) || length(padding) != 2L || any(!is.finite(padding))) {
+    stop("padding must be a finite numeric vector of length 2.", call. = FALSE)
+  }
+  list(fill = fill, borderColor = borderColor, padding = unname(as.numeric(padding)), visible = visible)
+}
+
 theme_3d <- function(...) {
   values <- list(...)
   theme <- list()
@@ -74,6 +94,12 @@ theme_3d_scientific <- function() {
         side = "double"
       )
     ),
+    abs = list(
+      line = element_abs_line(),
+      point = element_abs_point(),
+      text = element_abs_text(),
+      label.background = element_abs_label_background()
+    ),
     light = list(
       ambient = list(color = "#FFFFFF", intensity = 0.65),
       key = list(color = "#FFFFFF", intensity = 0.85, position = c(3, -4, 5))
@@ -107,6 +133,12 @@ theme_3d_umap <- function() {
         opacity = 0.72,
         side = "double"
       )
+    ),
+    abs = list(
+      line = element_abs_line(color = "#374151", opacity = 1),
+      point = element_abs_point(color = "#374151", size = 5),
+      text = element_abs_text(color = "#111827", size = 12),
+      label.background = element_abs_label_background(fill = "#FFFFFF", borderColor = "#D1D5DB")
     ),
     light = list(
       ambient = list(color = "#FFFFFF", intensity = 0.8),
@@ -159,6 +191,10 @@ validate_theme_key <- function(key) {
     "axis.text",
     "material.point",
     "material.surface",
+    "abs.line",
+    "abs.point",
+    "abs.text",
+    "abs.label.background",
     "light.ambient",
     "light.key"
   )

@@ -143,12 +143,27 @@
         "type": { "const": "abs_annotation" },
         "space": {
           "type": "object",
-          "required": ["type", "units", "occlusion"],
+          "required": ["type", "units"],
           "properties": {
             "type": { "const": "anchored_billboard" },
             "units": { "const": "px" },
-            "depthMode": { "const": "anchor-depth" },
-            "occlusion": { "enum": ["depth-test", "none"] }
+            "depthMode": { "const": "anchor-depth" }
+          }
+        },
+        "occlusion": {
+          "type": "object",
+          "properties": {
+            "anchor": { "enum": ["depth-test", "none"] },
+            "leader": { "enum": ["depth-test", "none"] },
+            "label": { "enum": ["depth-test", "none"] }
+          }
+        },
+        "visibility": {
+          "type": "object",
+          "properties": {
+            "hideWhenAnchorOutsideFrustum": { "type": "boolean" },
+            "hideLeaderWhenAnchorOutsideFrustum": { "type": "boolean" },
+            "hideLabelWhenAnchorOutsideFrustum": { "type": "boolean" }
           }
         },
         "data": {
@@ -177,7 +192,13 @@
           "type": "object",
           "properties": {
             "point": { "type": "object" },
-            "line": { "type": "object" },
+            "line": {
+              "type": "object",
+              "properties": {
+                "widthUnit": { "const": "px" },
+                "geometry": { "const": "screen-ribbon" }
+              }
+            },
             "text": { "type": "object" }
           }
         }

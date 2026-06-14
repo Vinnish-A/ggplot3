@@ -1,21 +1,61 @@
-abs_route <- function(up = 64, right = 120, units = "px") {
-  if (!is.numeric(up) || length(up) != 1L || !is.finite(up)) {
-    stop("up must be a finite numeric scalar.", call. = FALSE)
-  }
-  if (!is.numeric(right) || length(right) != 1L || !is.finite(right)) {
-    stop("right must be a finite numeric scalar.", call. = FALSE)
-  }
+abs_anchor <- function() {
+  new_abs_route_command("move_anchor")
+}
+
+abs_up <- function(px) {
+  new_abs_route_command("screen_offset", dx = 0, dy = -check_abs_px(px, "px"))
+}
+
+abs_down <- function(px) {
+  new_abs_route_command("screen_offset", dx = 0, dy = check_abs_px(px, "px"))
+}
+
+abs_left <- function(px) {
+  new_abs_route_command("screen_offset", dx = -check_abs_px(px, "px"), dy = 0)
+}
+
+abs_right <- function(px) {
+  new_abs_route_command("screen_offset", dx = check_abs_px(px, "px"), dy = 0)
+}
+
+abs_offset <- function(dx, dy) {
+  new_abs_route_command(
+    "screen_offset",
+    dx = check_abs_px(dx, "dx"),
+    dy = check_abs_px(dy, "dy")
+  )
+}
+
+abs_elbow <- function(direction = c("up-right", "up-left", "down-right", "down-left"),
+                      first = 72, second = 150) {
+  direction <- match.arg(direction)
+  switch(
+    direction,
+    "up-right" = list(abs_up(first), abs_right(second)),
+    "up-left" = list(abs_up(first), abs_left(second)),
+    "down-right" = list(abs_down(first), abs_right(second)),
+    "down-left" = list(abs_down(first), abs_left(second))
+  )
+}
+
+abs_route <- function(..., up = 64, right = 120, units = "px") {
   if (!identical(units, "px")) {
     stop("Only units = 'px' is supported for ABS routes.", call. = FALSE)
   }
 
+  commands <- list(...)
+  if (length(commands) == 0L) {
+    commands <- list(abs_anchor(), abs_up(up), abs_right(right))
+  } else {
+    commands <- flatten_abs_commands(commands)
+    if (!any(vapply(commands, function(command) identical(command$op, "move_anchor"), logical(1)))) {
+      commands <- c(list(abs_anchor()), commands)
+    }
+  }
+
   route <- list(
     units = units,
-    commands = list(
-      list(op = "move_anchor"),
-      list(op = "screen_up", dy = unname(up)),
-      list(op = "screen_right", dx = unname(right))
-    )
+    commands = normalize_abs_route_commands(commands)
   )
   class(route) <- c("ggplot3scene_abs_route", "list")
   route
@@ -25,8 +65,20 @@ geom_abs_label3d <- function(mapping = NULL, data = NULL, route = abs_route(),
                              label_offset = c(12, 0), point_size = 5,
                              line_width = 2,
                              occlusion = c("depth-test", "none"),
+                             leader_occlusion = NULL,
+                             label_occlusion = "none",
+                             anchor_occlusion = NULL,
+                             hide_when_anchor_outside = TRUE,
                              name = "ABS labels", ...) {
+  point_size_explicit <- !missing(point_size)
+  line_width_explicit <- !missing(line_width)
   occlusion <- match.arg(occlusion)
+  leader_occlusion <- leader_occlusion %||% occlusion
+  anchor_occlusion <- anchor_occlusion %||% occlusion
+  leader_occlusion <- match_abs_occlusion(leader_occlusion, "leader_occlusion")
+  label_occlusion <- match_abs_occlusion(label_occlusion, "label_occlusion")
+  anchor_occlusion <- match_abs_occlusion(anchor_occlusion, "anchor_occlusion")
+
   dots <- list(...)
   if (length(dots) > 0) {
     stop("Unused arguments in geom_abs_label3d(): ", paste(names(dots), collapse = ", "), call. = FALSE)
@@ -46,6 +98,9 @@ geom_abs_label3d <- function(mapping = NULL, data = NULL, route = abs_route(),
   if (!is.numeric(line_width) || length(line_width) != 1L || !is.finite(line_width) || line_width <= 0) {
     stop("line_width must be a positive numeric scalar.", call. = FALSE)
   }
+  if (!is.logical(hide_when_anchor_outside) || length(hide_when_anchor_outside) != 1L || is.na(hide_when_anchor_outside)) {
+    stop("hide_when_anchor_outside must be TRUE or FALSE.", call. = FALSE)
+  }
 
   new_abs_annotation_layer(
     mapping = mapping,
@@ -55,7 +110,18 @@ geom_abs_label3d <- function(mapping = NULL, data = NULL, route = abs_route(),
       label_offset = unname(as.numeric(label_offset)),
       point_size = point_size,
       line_width = line_width,
-      occlusion = occlusion,
+      point_size_explicit = point_size_explicit,
+      line_width_explicit = line_width_explicit,
+      occlusion = list(
+        anchor = anchor_occlusion,
+        leader = leader_occlusion,
+        label = label_occlusion
+      ),
+      visibility = list(
+        hideWhenAnchorOutsideFrustum = hide_when_anchor_outside,
+        hideLeaderWhenAnchorOutsideFrustum = hide_when_anchor_outside,
+        hideLabelWhenAnchorOutsideFrustum = hide_when_anchor_outside
+      ),
       name = name
     )
   )
@@ -110,7 +176,15 @@ compile_abs_annotation_layer <- function(plot, layer, layer_index, theme) {
     )
   }
 
-  line_depth_test <- identical(layer$params$occlusion, "depth-test")
+  abs_theme <- theme$abs %||% list()
+  point_theme <- abs_theme$point %||% list()
+  line_theme <- abs_theme$line %||% list()
+  text_theme <- abs_theme$text %||% list()
+  background_theme <- abs_theme$label.background %||% list()
+  occlusion <- layer$params$occlusion
+  point_size <- if (isTRUE(layer$params$point_size_explicit)) layer$params$point_size else point_theme$size %||% layer$params$point_size
+  line_width <- if (isTRUE(layer$params$line_width_explicit)) layer$params$line_width else line_theme$width %||% layer$params$line_width
+
   list(
     id = paste0("layer-", layer_index),
     type = "abs_annotation",
@@ -119,9 +193,10 @@ compile_abs_annotation_layer <- function(plot, layer, layer_index, theme) {
     space = list(
       type = "anchored_billboard",
       units = layer$params$route$units,
-      depthMode = "anchor-depth",
-      occlusion = layer$params$occlusion
+      depthMode = "anchor-depth"
     ),
+    occlusion = occlusion,
+    visibility = layer$params$visibility,
     data = list(
       encoding = "json-abs",
       anchors = anchors
@@ -134,23 +209,29 @@ compile_abs_annotation_layer <- function(plot, layer, layer_index, theme) {
     ),
     style = list(
       point = list(
-        visible = TRUE,
-        size = layer$params$point_size,
-        color = "#111827"
+        visible = point_theme$visible %||% TRUE,
+        size = point_size,
+        color = point_theme$color %||% "#111827",
+        depthTest = identical(occlusion$anchor, "depth-test")
       ),
       line = list(
-        width = layer$params$line_width,
-        opacity = 1,
-        color = "#111827",
-        depthTest = line_depth_test
+        width = line_width,
+        widthUnit = "px",
+        geometry = "screen-ribbon",
+        opacity = line_theme$opacity %||% 1,
+        color = line_theme$color %||% "#111827",
+        depthTest = identical(occlusion$leader, "depth-test")
       ),
       text = list(
-        size = 12,
-        color = "#111827",
-        background = TRUE,
-        backgroundColor = "#FFFFFF",
-        borderColor = "#D1D5DB",
-        billboard = TRUE
+        size = text_theme$size %||% 12,
+        color = text_theme$color %||% "#111827",
+        opacity = text_theme$opacity %||% 1,
+        background = background_theme$visible %||% TRUE,
+        backgroundColor = background_theme$fill %||% "#FFFFFF",
+        borderColor = background_theme$borderColor %||% "#D1D5DB",
+        padding = background_theme$padding %||% c(7, 5),
+        billboard = TRUE,
+        depthTest = identical(occlusion$label, "depth-test")
       )
     )
   )
@@ -168,4 +249,61 @@ get_mapped_label <- function(data, column) {
     stop("Column mapped to label contains missing values: ", column, call. = FALSE)
   }
   as.character(value)
+}
+
+new_abs_route_command <- function(op, ...) {
+  command <- c(list(op = op), list(...))
+  class(command) <- c("ggplot3scene_abs_route_command", "list")
+  command
+}
+
+normalize_abs_route_commands <- function(commands) {
+  lapply(commands, function(command) {
+    command <- unclass(command)
+    if (identical(command$op, "screen_up")) {
+      list(op = "screen_offset", dx = 0, dy = -unname(command$dy))
+    } else if (identical(command$op, "screen_down")) {
+      list(op = "screen_offset", dx = 0, dy = unname(command$dy))
+    } else if (identical(command$op, "screen_right")) {
+      list(op = "screen_offset", dx = unname(command$dx), dy = 0)
+    } else if (identical(command$op, "screen_left")) {
+      list(op = "screen_offset", dx = -unname(command$dx), dy = 0)
+    } else if (identical(command$op, "screen_offset")) {
+      list(op = "screen_offset", dx = unname(command$dx), dy = unname(command$dy))
+    } else if (identical(command$op, "move_anchor")) {
+      list(op = "move_anchor")
+    } else {
+      stop("Unsupported ABS route command: ", command$op, call. = FALSE)
+    }
+  })
+}
+
+flatten_abs_commands <- function(commands) {
+  out <- list()
+  append_command <- function(x) {
+    if (inherits(x, "ggplot3scene_abs_route_command")) {
+      out[[length(out) + 1L]] <<- x
+    } else if (is.list(x) && length(x) > 0L && !is.null(x[[1]]) &&
+               inherits(x[[1]], "ggplot3scene_abs_route_command")) {
+      for (item in x) append_command(item)
+    } else {
+      stop("ABS route arguments must be commands such as abs_anchor(), abs_up(), or abs_offset().", call. = FALSE)
+    }
+  }
+  for (command in commands) append_command(command)
+  out
+}
+
+check_abs_px <- function(x, name) {
+  if (!is.numeric(x) || length(x) != 1L || !is.finite(x)) {
+    stop(name, " must be a finite numeric scalar.", call. = FALSE)
+  }
+  unname(as.numeric(x))
+}
+
+match_abs_occlusion <- function(x, name) {
+  if (!is.character(x) || length(x) != 1L || !x %in% c("depth-test", "none")) {
+    stop(name, " must be 'depth-test' or 'none'.", call. = FALSE)
+  }
+  x
 }

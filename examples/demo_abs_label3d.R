@@ -39,11 +39,13 @@ p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
   geom_abs_label3d(
     data = label_df,
     mapping = aes3(x, y, z = z, label = label),
-    route = abs_route(up = 72, right = 150),
+    route = abs_route(abs_anchor(), abs_up(72), abs_right(150)),
     label_offset = c(14, 0),
     point_size = 6,
     line_width = 2,
-    occlusion = "depth-test"
+    leader_occlusion = "depth-test",
+    anchor_occlusion = "depth-test",
+    label_occlusion = "none"
   ) +
   coord_3d(
     projection = "orthographic",
