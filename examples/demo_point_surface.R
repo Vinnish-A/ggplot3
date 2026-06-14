@@ -12,7 +12,7 @@ if (requireNamespace("devtools", quietly = TRUE)) {
   devtools::load_all(root, quiet = TRUE)
 } else {
   r_files <- file.path(root, "R", c(
-    "aes3.R", "theme3d.R", "scene3d.R", "layers.R", "build.R", "export.R", "demo_data.R"
+    "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "layers.R", "build.R", "export.R", "demo_data.R"
   ))
   invisible(lapply(r_files, source))
 }

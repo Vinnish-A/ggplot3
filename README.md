@@ -13,9 +13,13 @@ engine.
 - `ggplot3()` plot object with `+` composition.
 - `aes3()` mapping without quosures, rlang, ggplot2 internals, grid, or grobs.
 - `geom_point3d()` point cloud layer.
-- `geom_surface_grid3d()` gridded surface layer.
+- `geom_surface_grid3d()` gridded surface layer, preferably via `grid2d()`.
+- `grid2d()` reusable surface grid objects with optional alpha/mask payloads.
+- `alpha_edge_fade()`, `alpha_density_fade()`, and `alpha_combined_fade()` for soft surface alpha.
 - `coord_3d()` camera and projection settings.
+- `grid_3d()` and `coord_umap3d()` for coordinate/grid display protocol.
 - `theme_3d()` and `theme_3d_scientific()` JSON-compatible theme defaults.
+- `theme_3d_umap()` visual defaults for UMAP-style scenes.
 - `element_material_3d()` and `element_light_3d()` for material/light theme entries.
 - `as_scene3d()` compiler boundary.
 - `write_scene_json()` for Scene3D JSON.
@@ -76,6 +80,48 @@ write_scene_json(scene, "demo.scene.json")
 export_html(scene, "demo.html")
 ```
 
+## UMAP-style coordinates and positive grid
+
+UMAP coordinates are assumed to be precomputed. `ggplot3scene` does not run
+UMAP and does not infer embedding parameters in the browser. The R side compiles
+already-computed coordinates into Scene3D JSON, and the renderer only displays
+that protocol.
+
+Use `coord_umap3d()` to choose visual coordinate conventions for UMAP-style
+figures:
+
+```r
+p <- ggplot3(umap_df, aes3(UMAP1, UMAP2, z = z, colour = cluster)) +
+  geom_surface_grid3d(
+    grid = grid2d(xgrid, ygrid, zmat, alpha = alpha_combined_fade(zmat)),
+    fill = "#4477AA"
+  ) +
+  geom_point3d(size = 3, alpha = 0.85) +
+  coord_umap3d(origin_mode = "data_min", positive_grid = TRUE) +
+  theme_3d_umap()
+```
+
+`positive_grid = TRUE` affects grid display only. It does not mutate source
+coordinates, does not remove negative values from layer data, and does not
+belong to the theme system. The compiled scene stores this under
+`axes.grid.domainMode`.
+
+`grid2d()` is the preferred input for gridded surfaces. It carries `x`, `y`,
+`z`, optional per-grid alpha, optional masks, shape metadata, and protocol
+metadata as plain JSON-compatible data. Surface alpha helpers can make
+KDE-like or density-like surfaces fade softly near edges or low-density regions.
+
+Run the UMAP-style demo:
+
+```sh
+Rscript examples/demo_umap_positive_grid_fade.R
+```
+
+This writes:
+
+- `demo_umap_positive_grid_fade.html`
+- `demo_umap_positive_grid_fade.scene.json`
+
 ## Run Tests
 
 ```sh
@@ -93,6 +139,7 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 - Point size is rendered as screen-space average size in the prototype renderer.
 - Scene3D schema is intentionally minimal.
 - Theme3D intentionally does not control camera, projection, stats, scale domains, or data transforms.
+- `coord_umap3d()` controls display conventions only; UMAP computation is out of scope.
 
 ## Roadmap
 

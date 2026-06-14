@@ -20,6 +20,8 @@ as_scene3d <- function(plot) {
       stop("Unsupported layer type: ", layer$type, call. = FALSE)
     )
   }
+  bounds <- compute_scene_bounds(compiled_layers)
+  coord_protocol <- compile_coord_protocol(plot$coord, bounds)
 
   scene <- list(
     schemaVersion = "0.1.0",
@@ -27,7 +29,11 @@ as_scene3d <- function(plot) {
     coordinateSystem = list(
       type = "cartesian3d",
       handedness = "right",
-      aspect = list(mode = "manual", ratio = unname(plot$coord$aspect))
+      origin = coord_protocol$origin,
+      originMode = plot$coord$origin_mode,
+      domain = coord_protocol$domain,
+      aspect = list(mode = "manual", ratio = unname(plot$coord$aspect)),
+      clip = plot$coord$clip
     ),
     layers = compiled_layers,
     camera = list(
@@ -40,7 +46,8 @@ as_scene3d <- function(plot) {
     axes = list(
       x = list(visible = TRUE, title = "x"),
       y = list(visible = TRUE, title = "y"),
-      z = list(visible = TRUE, title = "z")
+      z = list(visible = TRUE, title = "z"),
+      grid = coord_protocol$grid
     ),
     lights = list(
       ambient = theme$light$ambient,
@@ -119,6 +126,7 @@ compile_point_cloud_layer <- function(plot, layer, layer_index, theme) {
 
 compile_surface_grid_layer <- function(layer, layer_index, theme) {
   p <- layer$params
+  grid <- p$grid
   surface_theme <- theme$material$surface %||% list()
   fill <- if (isTRUE(p$fill_explicit)) p$fill else surface_theme$fill %||% p$fill
   opacity <- if (isTRUE(p$alpha_explicit)) p$alpha else surface_theme$opacity %||% p$alpha
@@ -128,13 +136,7 @@ compile_surface_grid_layer <- function(layer, layer_index, theme) {
     type = "surface_grid",
     name = p$name,
     visible = TRUE,
-    data = list(
-      encoding = "json-grid",
-      x = unname(as.numeric(p$x)),
-      y = unname(as.numeric(p$y)),
-      z = unname(as.numeric(as.vector(t(p$z)))),
-      shape = c(length(p$x), length(p$y))
-    ),
+    data = compile_grid2d_data(grid),
     material = list(
       type = surface_theme$type %||% "surface",
       model = surface_theme$model %||% "unlit",
@@ -194,6 +196,145 @@ resolve_point_colors <- function(data, mapping, explicit_colour, n, default_colo
   }
 
   rep(default_color, n)
+}
+
+compute_scene_bounds <- function(layers) {
+  mins <- c(x = Inf, y = Inf, z = Inf)
+  maxs <- c(x = -Inf, y = -Inf, z = -Inf)
+
+  for (layer in layers) {
+    layer_bounds <- compute_layer_bounds(layer)
+    if (is.null(layer_bounds)) {
+      next
+    }
+    mins <- pmin(mins, layer_bounds$min)
+    maxs <- pmax(maxs, layer_bounds$max)
+  }
+
+  if (any(!is.finite(mins)) || any(!is.finite(maxs))) {
+    mins <- c(x = -1, y = -1, z = -1)
+    maxs <- c(x = 1, y = 1, z = 1)
+  }
+
+  list(min = mins, max = maxs)
+}
+
+compute_layer_bounds <- function(layer) {
+  if (identical(layer$type, "point_cloud")) {
+    columns <- layer$data$columns
+    return(list(
+      min = c(x = min(columns$x), y = min(columns$y), z = min(columns$z)),
+      max = c(x = max(columns$x), y = max(columns$y), z = max(columns$z))
+    ))
+  }
+
+  if (identical(layer$type, "surface_grid")) {
+    data <- layer$data
+    return(list(
+      min = c(x = min(data$x), y = min(data$y), z = min(data$z)),
+      max = c(x = max(data$x), y = max(data$y), z = max(data$z))
+    ))
+  }
+
+  NULL
+}
+
+compile_coord_protocol <- function(coord, bounds) {
+  data_domain <- list(
+    x = c(bounds$min[["x"]], bounds$max[["x"]]),
+    y = c(bounds$min[["y"]], bounds$max[["y"]]),
+    z = c(bounds$min[["z"]], bounds$max[["z"]])
+  )
+  data_domain <- expand_domain(data_domain, coord$expand)
+  domain <- apply_axis_limits(data_domain, coord$axis_limits)
+
+  origin <- switch(
+    coord$origin_mode,
+    fixed = unname(coord$origin),
+    data_min = unname(c(bounds$min[["x"]], bounds$min[["y"]], bounds$min[["z"]])),
+    data_center = unname(c(
+      mean(c(bounds$min[["x"]], bounds$max[["x"]])),
+      mean(c(bounds$min[["y"]], bounds$max[["y"]])),
+      mean(c(bounds$min[["z"]], bounds$max[["z"]]))
+    ))
+  )
+
+  grid_domain <- compile_grid_domain(domain, origin, coord$grid$domain)
+  major_breaks <- compile_major_breaks(grid_domain, coord$grid$breaks)
+
+  list(
+    origin = origin,
+    domain = unname_domain(domain),
+    grid = list(
+      visible = coord$grid$visible,
+      planes = unname(coord$grid$planes),
+      domainMode = coord$grid$domain,
+      origin = origin,
+      domain = unname_domain(grid_domain),
+      majorBreaks = major_breaks
+    )
+  )
+}
+
+expand_domain <- function(domain, expand) {
+  if (is.null(expand) || expand <= 0) {
+    return(domain)
+  }
+  for (axis in names(domain)) {
+    range_width <- diff(domain[[axis]])
+    pad <- if (range_width == 0) max(abs(domain[[axis]]), 1) * expand else range_width * expand
+    domain[[axis]] <- domain[[axis]] + c(-pad, pad)
+  }
+  domain
+}
+
+apply_axis_limits <- function(domain, axis_limits) {
+  for (axis in names(domain)) {
+    if (!is.null(axis_limits[[axis]])) {
+      domain[[axis]] <- axis_limits[[axis]]
+    }
+  }
+  domain
+}
+
+compile_grid_domain <- function(domain, origin, domain_mode) {
+  out <- domain
+  axes <- c("x", "y", "z")
+  for (i in seq_along(axes)) {
+    axis <- axes[[i]]
+    if (identical(domain_mode, "positive")) {
+      out[[axis]] <- c(origin[[i]], max(domain[[axis]][[2]], origin[[i]]))
+    } else if (identical(domain_mode, "negative")) {
+      out[[axis]] <- c(min(domain[[axis]][[1]], origin[[i]]), origin[[i]])
+    } else {
+      out[[axis]] <- domain[[axis]]
+    }
+  }
+  out
+}
+
+compile_major_breaks <- function(domain, breaks) {
+  out <- list()
+  for (axis in names(domain)) {
+    if (!is.null(breaks) && !is.null(breaks[[axis]])) {
+      out[[axis]] <- unname(as.numeric(breaks[[axis]]))
+    } else {
+      out[[axis]] <- unname(pretty(domain[[axis]], n = 5))
+      out[[axis]] <- out[[axis]][out[[axis]] >= min(domain[[axis]]) & out[[axis]] <= max(domain[[axis]])]
+      if (length(out[[axis]]) == 0L) {
+        out[[axis]] <- unname(domain[[axis]])
+      }
+    }
+  }
+  out
+}
+
+unname_domain <- function(domain) {
+  list(
+    x = unname(as.numeric(domain$x)),
+    y = unname(as.numeric(domain$y)),
+    z = unname(as.numeric(domain$z))
+  )
 }
 
 `%||%` <- function(x, y) {

@@ -14,7 +14,7 @@ find_package_root <- function(path = getwd()) {
 
 root <- find_package_root()
 source_files <- file.path(root, "R", c(
-  "aes3.R", "theme3d.R", "scene3d.R", "layers.R", "build.R", "export.R", "demo_data.R"
+  "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "layers.R", "build.R", "export.R", "demo_data.R"
 ))
 invisible(lapply(source_files, source))
 
@@ -128,7 +128,7 @@ test_that("coord_3d compiles camera and axes without theme leakage", {
   expect_equal(scene$camera$target, c(1, 1, 1))
   expect_equal(scene$camera$zoom, 1.5)
   expect_equal(scene$coordinateSystem$aspect$ratio, c(1, 2, 3))
-  expect_equal(names(scene$axes), c("x", "y", "z"))
+  expect_equal(names(scene$axes), c("x", "y", "z", "grid"))
   expect_null(scene$theme$camera)
   expect_equal(scene$theme$scene$background, "#EEEEEE")
 })
@@ -233,4 +233,137 @@ test_that("theme_3d rejects camera and computation concerns", {
   expect_error(theme_3d(camera.position = c(1, 2, 3)), "Unsupported theme_3d")
   expect_error(theme_3d(scale.domain = c(0, 1)), "Unsupported theme_3d")
   expect_error(theme_3d(stat.bandwidth = 1), "Unsupported theme_3d")
+})
+
+test_that("grid2d validates shape and alpha inputs", {
+  x <- c(0, 1)
+  y <- c(0, 1, 2)
+  z <- outer(x, y, `+`)
+  alpha <- matrix(seq(0, 1, length.out = length(z)), nrow = length(x), ncol = length(y))
+
+  grid <- grid2d(x, y, z, alpha = alpha, metadata = list(source = "test"))
+  expect_s3_class(grid, "ggplot3scene_grid2d")
+  expect_equal(grid$shape, c(2, 3))
+  expect_equal(grid$alpha, alpha)
+
+  expect_error(grid2d(x, y, matrix(1, nrow = 3, ncol = 2)), "dim\\(z\\)")
+  expect_error(grid2d(x, y, z, alpha = c(0.1, 0.2)), "alpha must")
+  expect_error(grid2d(x, y, z, alpha = 2), "\\[0, 1\\]")
+})
+
+test_that("scene3d_table reserves json-columns table protocol", {
+  tbl <- scene3d_table(data.frame(x = c(1, 2), label = c("a", "b")))
+  compiled <- compile_scene3d_table(tbl)
+
+  expect_s3_class(tbl, "ggplot3scene_table")
+  expect_equal(compiled$kind, "table")
+  expect_equal(compiled$encoding, "json-columns")
+  expect_named(compiled$columns, c("x", "label"))
+  expect_error(scene3d_table(data.frame(x = 1), encoding = "arrow-ipc"), "reserved")
+})
+
+test_that("surface grid geoms compile from grid2d and legacy x/y/z", {
+  df <- data.frame(x = 1:3, y = 1:3, z = 1:3)
+  xgrid <- c(0, 1)
+  ygrid <- c(0, 1, 2)
+  zmat <- outer(xgrid, ygrid, `+`)
+  alpha <- matrix(0.5, nrow = length(xgrid), ncol = length(ygrid))
+
+  p_grid <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_surface_grid3d(grid = grid2d(xgrid, ygrid, zmat, alpha = alpha)) +
+    geom_point3d()
+  scene_grid <- as_scene3d(p_grid)
+  expect_equal(scene_grid$layers[[1]]$data$kind, "grid2d")
+  expect_equal(scene_grid$layers[[1]]$data$order, "row-major")
+  expect_equal(length(scene_grid$layers[[1]]$data$alpha), length(zmat))
+
+  p_legacy <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_surface_grid3d(x = xgrid, y = ygrid, z = zmat) +
+    geom_point3d()
+  scene_legacy <- as_scene3d(p_legacy)
+  expect_equal(scene_legacy$layers[[1]]$data$kind, "grid2d")
+  expect_equal(scene_legacy$layers[[1]]$data$shape, c(length(xgrid), length(ygrid)))
+})
+
+test_that("alpha fade helpers preserve shape and clamp values", {
+  z <- outer(seq(-1, 1, length.out = 12), seq(-1, 1, length.out = 9), function(x, y) exp(-(x^2 + y^2)))
+  fades <- list(
+    alpha_edge_fade(z),
+    alpha_density_fade(z),
+    alpha_combined_fade(z)
+  )
+
+  for (fade in fades) {
+    expect_equal(dim(fade), dim(z))
+    expect_true(all(is.finite(fade)))
+    expect_true(all(fade >= 0 & fade <= 1))
+  }
+})
+
+test_that("coord_3d grid protocol compiles origin and positive domain", {
+  df <- data.frame(x = c(-1, 2), y = c(-2, 3), z = c(0, 1))
+
+  p <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_point3d() +
+    coord_3d(origin = c(1, 2, 0), grid = grid_3d(domain = "positive", planes = "xy"))
+
+  scene <- as_scene3d(p)
+  expect_equal(scene$coordinateSystem$origin, c(1, 2, 0))
+  expect_equal(scene$coordinateSystem$originMode, "fixed")
+  expect_equal(scene$axes$grid$domainMode, "positive")
+  expect_equal(scene$axes$grid$origin, c(1, 2, 0))
+  expect_equal(scene$axes$grid$planes, "xy")
+})
+
+test_that("coord_umap3d compiles to positive xy grid", {
+  df <- data.frame(UMAP1 = c(-3, 2), UMAP2 = c(-1, 4), z = 0)
+
+  p <- ggplot3(df, aes3(UMAP1, UMAP2, z = z)) +
+    geom_point3d() +
+    coord_umap3d(origin_mode = "data_min", positive_grid = TRUE)
+
+  scene <- as_scene3d(p)
+  expect_equal(scene$coordinateSystem$originMode, "data_min")
+  expect_equal(scene$axes$grid$domainMode, "positive")
+  expect_equal(scene$axes$grid$planes, "xy")
+  expect_equal(scene$coordinateSystem$origin, c(-3, -1, 0))
+})
+
+test_that("theme_3d_umap is visual only", {
+  theme <- as_json_theme(theme_3d_umap())
+  expect_true(is.null(theme$coordinateSystem))
+  expect_true(is.null(theme$axes$grid))
+  expect_true(is.null(theme$origin))
+  expect_true(is.null(theme$grid))
+  expect_true(is.null(theme$clip))
+})
+
+test_that("exported HTML uses custom grid and axis builders", {
+  scene <- as_scene3d(demo_scene3d())
+  html_file <- tempfile(fileext = ".html")
+  export_html(scene, html_file)
+  html <- paste(readLines(html_file, warn = FALSE), collapse = "\n")
+
+  expect_false(grepl("GridHelper", html, fixed = TRUE))
+  expect_false(grepl("AxesHelper", html, fixed = TRUE))
+  expect_true(grepl("buildGridLines", html, fixed = TRUE))
+  expect_true(grepl("buildAxisLines", html, fixed = TRUE))
+})
+
+test_that("UMAP-style scene includes positive grid and surface alpha", {
+  df <- data.frame(UMAP1 = c(-1, 1), UMAP2 = c(-1, 1), z = c(0, 0), cluster = c("a", "b"))
+  xgrid <- seq(-1, 1, length.out = 5)
+  ygrid <- seq(-1, 1, length.out = 6)
+  zmat <- outer(xgrid, ygrid, function(x, y) exp(-(x^2 + y^2)))
+
+  p <- ggplot3(df, aes3(UMAP1, UMAP2, z = z, colour = cluster)) +
+    geom_surface_grid3d(grid = grid2d(xgrid, ygrid, zmat, alpha = alpha_combined_fade(zmat))) +
+    geom_point3d() +
+    coord_umap3d(origin_mode = "data_min", positive_grid = TRUE) +
+    theme_3d_umap()
+
+  scene <- as_scene3d(p)
+  expect_equal(scene$axes$grid$domainMode, "positive")
+  expect_false(is.null(scene$layers[[1]]$data$alpha))
+  expect_equal(length(scene$layers[[1]]$data$alpha), length(zmat))
 })

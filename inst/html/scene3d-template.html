@@ -226,13 +226,50 @@
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
 
-      const material = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(layer.material?.fill || "#4477AA"),
-        opacity: layer.material?.opacity ?? 0.65,
-        transparent: (layer.material?.opacity ?? 0.65) < 1,
-        side: THREE.DoubleSide,
-        depthWrite: (layer.material?.opacity ?? 0.65) >= 1
-      });
+      const materialOpacity = layer.material?.opacity ?? 0.65;
+      const fill = new THREE.Color(layer.material?.fill || "#4477AA");
+      let material;
+
+      if (layer.data.alpha && layer.data.alpha.length === nx * ny) {
+        const alpha = new Float32Array(nx * ny);
+        for (let i = 0; i < alpha.length; i += 1) {
+          alpha[i] = THREE.MathUtils.clamp(Number(layer.data.alpha[i]), 0, 1);
+        }
+        geometry.setAttribute("alpha", new THREE.BufferAttribute(alpha, 1));
+        material = new THREE.ShaderMaterial({
+          uniforms: {
+            fillColor: { value: fill },
+            opacity: { value: materialOpacity }
+          },
+          vertexShader: `
+            attribute float alpha;
+            varying float vAlpha;
+            void main() {
+              vAlpha = alpha;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 fillColor;
+            uniform float opacity;
+            varying float vAlpha;
+            void main() {
+              gl_FragColor = vec4(fillColor, opacity * vAlpha);
+            }
+          `,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+      } else {
+        material = new THREE.MeshBasicMaterial({
+          color: fill,
+          opacity: materialOpacity,
+          transparent: materialOpacity < 1,
+          side: THREE.DoubleSide,
+          depthWrite: materialOpacity >= 1
+        });
+      }
 
       world.add(new THREE.Mesh(geometry, material));
     }
@@ -264,17 +301,108 @@
     addLights();
     const fit = computeBounds();
 
-    const gridColor = sceneData.theme?.axis?.["grid.major"] || "#D9DDE3";
-    const lineColor = sceneData.theme?.axis?.line || "#4B5563";
-    const grid = new THREE.GridHelper(fit.radius * 3, 12, gridColor, gridColor);
-    grid.rotation.x = Math.PI / 2;
-    grid.position.copy(fit.center);
-    scene.add(grid);
+    function buildGridLines(gridSpec, theme) {
+      if (!gridSpec || gridSpec.visible === false) return null;
+      const positions = [];
+      const domain = gridSpec.domain || sceneData.coordinateSystem?.domain || {};
+      const origin = gridSpec.origin || sceneData.coordinateSystem?.origin || [0, 0, 0];
+      const breaks = gridSpec.majorBreaks || {};
+      const planes = gridSpec.planes || ["xy"];
 
-    const axes = new THREE.AxesHelper(fit.radius * 1.4);
-    axes.position.copy(fit.center);
-    axes.children?.forEach?.((child) => child.material?.color?.set(lineColor));
-    scene.add(axes);
+      for (const plane of planes) {
+        if (plane === "xy") {
+          addPlaneLines(positions, "x", "y", "z", domain, breaks, origin);
+        } else if (plane === "xz") {
+          addPlaneLines(positions, "x", "z", "y", domain, breaks, origin);
+        } else if (plane === "yz") {
+          addPlaneLines(positions, "y", "z", "x", domain, breaks, origin);
+        }
+      }
+
+      if (positions.length === 0) return null;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const material = new THREE.LineBasicMaterial({
+        color: new THREE.Color(theme?.axis?.["grid.major"] || "#D9DDE3"),
+        transparent: true,
+        opacity: 0.85
+      });
+      return new THREE.LineSegments(geometry, material);
+    }
+
+    function buildAxisLines(axesSpec, coordinateSystem, theme) {
+      const positions = [];
+      const domain = coordinateSystem?.domain || {};
+      const origin = coordinateSystem?.origin || [0, 0, 0];
+
+      if (axesSpec?.x?.visible !== false) {
+        pushLine(positions, [domain.x?.[0] ?? -1, origin[1], origin[2]], [domain.x?.[1] ?? 1, origin[1], origin[2]]);
+      }
+      if (axesSpec?.y?.visible !== false) {
+        pushLine(positions, [origin[0], domain.y?.[0] ?? -1, origin[2]], [origin[0], domain.y?.[1] ?? 1, origin[2]]);
+      }
+      if (axesSpec?.z?.visible !== false) {
+        pushLine(positions, [origin[0], origin[1], domain.z?.[0] ?? -1], [origin[0], origin[1], domain.z?.[1] ?? 1]);
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const material = new THREE.LineBasicMaterial({
+        color: new THREE.Color(theme?.axis?.line || "#4B5563")
+      });
+      return new THREE.LineSegments(geometry, material);
+    }
+
+    function addPlaneLines(positions, axisA, axisB, constantAxis, domain, breaks, origin) {
+      const aDomain = domain[axisA] || [-1, 1];
+      const bDomain = domain[axisB] || [-1, 1];
+      const aBreaks = breaks[axisA] || niceBreaks(aDomain);
+      const bBreaks = breaks[axisB] || niceBreaks(bDomain);
+      const constantValue = origin[axisIndex(constantAxis)] ?? 0;
+
+      for (const a of aBreaks) {
+        if (a < Math.min(...aDomain) || a > Math.max(...aDomain)) continue;
+        pushAxisPlaneLine(positions, axisA, axisB, constantAxis, a, bDomain[0], bDomain[1], constantValue);
+      }
+      for (const b of bBreaks) {
+        if (b < Math.min(...bDomain) || b > Math.max(...bDomain)) continue;
+        pushAxisPlaneLine(positions, axisB, axisA, constantAxis, b, aDomain[0], aDomain[1], constantValue);
+      }
+    }
+
+    function pushAxisPlaneLine(positions, fixedAxis, varyingAxis, constantAxis, fixedValue, startValue, endValue, constantValue) {
+      const start = [0, 0, 0];
+      const end = [0, 0, 0];
+      start[axisIndex(fixedAxis)] = fixedValue;
+      end[axisIndex(fixedAxis)] = fixedValue;
+      start[axisIndex(varyingAxis)] = startValue;
+      end[axisIndex(varyingAxis)] = endValue;
+      start[axisIndex(constantAxis)] = constantValue;
+      end[axisIndex(constantAxis)] = constantValue;
+      pushLine(positions, start, end);
+    }
+
+    function pushLine(positions, start, end) {
+      positions.push(start[0], start[1], start[2], end[0], end[1], end[2]);
+    }
+
+    function axisIndex(axis) {
+      return { x: 0, y: 1, z: 2 }[axis];
+    }
+
+    function niceBreaks(domain) {
+      const min = Number(domain[0]);
+      const max = Number(domain[1]);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return [min || 0];
+      const out = [];
+      const step = (max - min) / 5;
+      for (let i = 0; i <= 5; i += 1) out.push(min + step * i);
+      return out;
+    }
+
+    const gridLines = buildGridLines(sceneData.axes?.grid, sceneData.theme);
+    if (gridLines) scene.add(gridLines);
+    scene.add(buildAxisLines(sceneData.axes, sceneData.coordinateSystem, sceneData.theme));
 
     let camera;
     let controls = null;

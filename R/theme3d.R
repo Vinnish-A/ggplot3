@@ -83,6 +83,40 @@ theme_3d_scientific <- function() {
   theme
 }
 
+theme_3d_umap <- function() {
+  theme <- list(
+    scene = list(background = "#FFFFFF"),
+    axis = list(
+      grid.major = "#E3E7ED",
+      line = "#6B7280",
+      text = "#374151"
+    ),
+    material = list(
+      point = list(
+        type = "points",
+        sizeUnit = "screen",
+        depthTest = TRUE,
+        color = "#3366CC",
+        size = 3,
+        opacity = 0.85
+      ),
+      surface = list(
+        type = "surface",
+        model = "unlit",
+        fill = "#4477AA",
+        opacity = 0.72,
+        side = "double"
+      )
+    ),
+    light = list(
+      ambient = list(color = "#FFFFFF", intensity = 0.8),
+      key = list(color = "#FFFFFF", intensity = 0.55, position = c(2, -3, 4))
+    )
+  )
+  class(theme) <- c("ggplot3scene_theme", "list")
+  theme
+}
+
 merge_theme3d <- function(base, override) {
   base <- unclass(base)
   override <- unclass(override)

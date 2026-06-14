@@ -9,10 +9,13 @@
     "sceneId": { "type": "string" },
     "coordinateSystem": {
       "type": "object",
-      "required": ["type", "handedness", "aspect"],
+      "required": ["type", "handedness", "origin", "originMode", "domain", "aspect"],
       "properties": {
         "type": { "const": "cartesian3d" },
         "handedness": { "const": "right" },
+        "origin": { "$ref": "#/$defs/vec3" },
+        "originMode": { "enum": ["fixed", "data_min", "data_center"] },
+        "domain": { "$ref": "#/$defs/domain3" },
         "aspect": { "type": "object" }
       }
     },
@@ -36,7 +39,25 @@
         "zoom": { "type": "number", "exclusiveMinimum": 0 }
       }
     },
-    "axes": { "type": "object" },
+    "axes": {
+      "type": "object",
+      "properties": {
+        "grid": {
+          "type": "object",
+          "properties": {
+            "visible": { "type": "boolean" },
+            "planes": {
+              "type": "array",
+              "items": { "enum": ["xy", "xz", "yz"] }
+            },
+            "domainMode": { "enum": ["full", "positive", "negative", "limits"] },
+            "origin": { "$ref": "#/$defs/vec3" },
+            "domain": { "$ref": "#/$defs/domain3" },
+            "majorBreaks": { "type": "object" }
+          }
+        }
+      }
+    },
     "lights": { "type": "object" },
     "theme": { "type": "object" },
     "metadata": { "type": "object" }
@@ -47,6 +68,20 @@
       "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
       "minItems": 3,
       "maxItems": 3
+    },
+    "domain3": {
+      "type": "object",
+      "properties": {
+        "x": { "$ref": "#/$defs/range2" },
+        "y": { "$ref": "#/$defs/range2" },
+        "z": { "$ref": "#/$defs/range2" }
+      }
+    },
+    "range2": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "minItems": 2,
+      "maxItems": 2
     },
     "pointCloudLayer": {
       "type": "object",
@@ -73,9 +108,23 @@
         "type": { "const": "surface_grid" },
         "data": {
           "type": "object",
-          "required": ["encoding", "x", "y", "z", "shape"],
+          "required": ["kind", "encoding", "x", "y", "z", "shape", "order"],
           "properties": {
+            "kind": { "const": "grid2d" },
             "encoding": { "const": "json-grid" },
+            "order": { "const": "row-major" },
+            "alpha": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "number" } },
+                { "type": "null" }
+              ]
+            },
+            "mask": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "boolean" } },
+                { "type": "null" }
+              ]
+            },
             "shape": {
               "type": "array",
               "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
