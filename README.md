@@ -5,7 +5,7 @@ R builds a language-neutral Scene3D JSON document; the browser renderer consumes
 only that JSON and renders points, surface grids, camera state, theme defaults,
 and lights.
 
-This is a Phase 0 vertical slice, not a full ggplot2 extension and not a full 3D
+This is a Stage 3 prototype, not a full ggplot2 extension and not a full 3D
 engine.
 
 ## Current MVP
@@ -14,11 +14,12 @@ engine.
 - `aes3()` mapping without quosures, rlang, ggplot2 internals, grid, or grobs.
 - ggplot2-like aes input normalization and a narrow `ggplot3_from_ggplot()` adapter.
 - `geom_point3d()` point cloud layer.
+- `geom_path3d()` and `geom_segment3d()` world-space polyline layers.
 - `geom_surface_grid3d()` gridded surface layer, preferably via `grid2d()`.
 - `geom_surface_mesh3d()`, `geom_contour_stack3d()`, and `geom_ridgeline3d()` for non-grid surface objects.
 - `grid2d()` reusable surface grid objects with optional alpha/mask payloads.
 - R-side surface-producing stats: `stat_density_surface3d()`, `stat_function_surface3d()`, and `stat_smooth_surface3d()`.
-- Scene3D-native face projections with `geom_face_density3d()` and `position_on_plane3d()`.
+- Scene3D-native face projections with density, points, path, and contour variants.
 - `alpha_edge_fade()`, `alpha_density_fade()`, and `alpha_combined_fade()` for soft surface alpha.
 - `coord_3d()` camera and projection settings.
 - `grid_3d()`, `axis_3d()`, and `coord_umap3d()` for coordinate/grid/axis display protocol.
@@ -198,9 +199,9 @@ This writes:
 
 ## Face projection
 
-Face projection is a separate rendering space. It maps an already-computed 2D
-grid onto a named 3D plane or cube face. It is not an arbitrary ggplot2 layer
-projection and it does not ask the browser to compute density.
+Face projection is a separate rendering space. It maps already-computed or
+R-computed 2D data onto a named 3D plane or cube face. It is not an arbitrary
+ggplot2 layer projection and it does not ask the browser to compute density.
 
 ```r
 p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
@@ -210,11 +211,17 @@ p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
     axes = c("x", "y"),
     offset = -0.05
   ) +
+  geom_face_points3d(
+    aes3(x, y, colour = group),
+    plane = "zmin",
+    axes = c("x", "y")
+  ) +
   geom_point3d()
 ```
 
 The emitted layer has `type = "face_projection"` and declares `plane`, `axes`,
-`offset`, `clip`, grid data, and unlit style as JSON.
+`offset`, `clip`, data kind, and unlit style as JSON. Supported first variants
+are density grids, points, paths, and contour lines.
 
 Run the face projection demo:
 
@@ -262,8 +269,9 @@ ggplot3(df, ggplot2::aes(x, y, z = z, colour = group)) +
   geom_point3d()
 ```
 
-`ggplot3_from_ggplot()` is a narrow adapter for simple ggplot point plots. It is
-an input bridge only and is not part of the rendering core.
+`ggplot3_from_ggplot()` is a narrow adapter for simple ggplot point, path, line,
+and segment plots. It normalizes mappings immediately, adds a zero z plane for
+2D inputs when needed, and remains an input bridge only.
 
 ## ABS anchored annotations
 
@@ -320,7 +328,7 @@ The Stage 3 showcase combines the core spaces:
 
 - world space point cloud;
 - R-computed density surface;
-- floor face projection;
+- floor and side face projections;
 - positive grid and shortened arrow axes;
 - ABS cluster labels;
 - guide overlay.
@@ -344,10 +352,10 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 
 - No Shiny.
 - No ggplot2 internals, quosures, grid, or grobs.
-- `ggplot3_from_ggplot()` currently supports only simple point layers.
-- No full scale system; colour mapping is limited to discrete character/factor columns.
+- `ggplot3_from_ggplot()` currently supports only simple point, path, line, and segment layers.
+- No full scale system; colour mapping covers basic discrete character/factor columns and numeric continuous columns.
 - Surface stats are intentionally small: density uses an R Gaussian product-kernel estimator and smooth surfaces use a quadratic `lm`.
-- Face projection currently supports density grids, not arbitrary 2D ggplot layer projection.
+- Face projection supports density grids, points, paths, and contour lines, not arbitrary ggplot2 layer projection.
 - No R-side headless PNG export.
 - No local three.js vendor bundle yet.
 - Camera interaction is intentionally minimal: drag rotates and wheel zooms; pan is not implemented yet.
@@ -364,4 +372,4 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 2. Add local vendor fallback for three.js and OrbitControls.
 3. Expand renderer controls for visibility, opacity, reset, PNG, and view import.
 4. Add focused tests for theme resolution, colour mapping, and invalid layers.
-5. Add face projection, axis guides, and a product-grade UMAP showcase on top of the new surface stat protocol.
+5. Add stronger schema validation, view import/export tests, and local renderer bundling.

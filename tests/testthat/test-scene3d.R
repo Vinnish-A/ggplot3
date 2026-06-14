@@ -52,6 +52,69 @@ test_that("as_scene3d compiles point cloud and surface grid", {
   expect_named(points$data$columns, c("x", "y", "z", "color", "size", "alpha"))
 })
 
+test_that("polyline3d path and segment layers compile", {
+  path_df <- data.frame(
+    x = c(0, 1, 0, 1),
+    y = c(0, 1, 1, 0),
+    z = c(0, 0.2, 0.4, 0.6),
+    group = c("a", "a", "b", "b")
+  )
+  seg_df <- data.frame(
+    x = 0,
+    y = 0,
+    z = 0,
+    xend = 1,
+    yend = 1,
+    zend = 1
+  )
+
+  scene <- as_scene3d(
+    ggplot3(path_df, aes3(x, y, z = z, group = group)) +
+      geom_path3d(line_width = 2) +
+      geom_segment3d(data = seg_df, mapping = aes3(x, y, z = z, xend = xend, yend = yend, zend = zend))
+  )
+
+  expect_equal(scene$layers[[1]]$type, "polyline3d")
+  expect_equal(scene$layers[[1]]$space$type, "world")
+  expect_equal(length(scene$layers[[1]]$data$polylines), 2)
+  expect_equal(scene$layers[[2]]$style$type, "segment")
+  expect_equal(scene$layers[[2]]$data$polylines[[1]]$z, c(0, 1))
+})
+
+test_that("numeric colour mapping compiles to point hex colors", {
+  df <- data.frame(x = 1:4, y = 1:4, z = 1:4, value = c(0, 0.25, 0.75, 1))
+  scene <- as_scene3d(ggplot3(df, aes3(x, y, z = z, colour = value)) + geom_point3d())
+  colors <- scene$layers[[1]]$data$columns$color
+  expect_length(colors, 4)
+  expect_true(all(grepl("^#", colors)))
+  expect_gt(length(unique(colors)), 1)
+})
+
+test_that("ggplot2 adapter supports point path and segment without leaking ggplot objects", {
+  skip_if_not_installed("ggplot2")
+  df <- data.frame(
+    x = c(0, 1, 2),
+    y = c(0, 1, 0),
+    z = c(0, 0.5, 1),
+    value = c(0, 1, 2),
+    xend = c(0.5, 1.5, 2.5),
+    yend = c(0.4, 0.6, 0.2)
+  )
+  gp <- ggplot2::ggplot(df, ggplot2::aes(x, y, z = z, colour = value)) +
+    ggplot2::geom_point() +
+    ggplot2::geom_path() +
+    ggplot2::geom_segment(ggplot2::aes(xend = xend, yend = yend))
+
+  scene <- as_scene3d_ggplot(gp)
+
+  expect_equal(vapply(scene$layers, `[[`, character(1), "type"), c("point_cloud", "polyline3d", "polyline3d"))
+  expect_equal(scene$layers[[2]]$style$type, "path")
+  expect_equal(scene$layers[[3]]$style$type, "segment")
+  expect_equal(scene$layers[[3]]$data$polylines[[1]]$z, c(0, 0))
+  scene_text <- jsonlite::toJSON(scene, auto_unbox = TRUE)
+  expect_false(grepl("quosure|ggproto|grob|ggplot_build|ggplot2", scene_text))
+})
+
 test_that("write_scene_json and export_html write files", {
   scene <- as_scene3d(demo_scene3d())
   json_file <- tempfile(fileext = ".json")
@@ -471,6 +534,36 @@ test_that("face projection protocol compiles density grid onto a plane", {
   expect_equal(layer$data$metadata$stat$computedBy, "R")
 })
 
+test_that("face projection supports points paths and contours", {
+  df <- data.frame(
+    x = c(0, 1, 2, 0, 1, 2),
+    y = c(0, 0.5, 0, 1, 1.5, 1),
+    group = c("a", "a", "a", "b", "b", "b")
+  )
+  contours <- contour_stack(
+    list(data.frame(x = c(0, 1, 2), y = c(0.2, 0.8, 0.2), z = 0)),
+    levels = 0.4
+  )
+
+  scene <- as_scene3d(
+    ggplot3(df, aes3(x, y)) +
+      geom_face_points3d(plane = "zmin", size = 4, alpha = 0.7) +
+      geom_face_path3d(aes3(x, y, group = group), plane = "zmax", line_width = 2) +
+      geom_face_contour3d(contours, plane = "xmax", axes = c("y", "z"))
+  )
+
+  expect_equal(vapply(scene$layers, function(layer) layer$type, character(1)), rep("face_projection", 3))
+  expect_equal(scene$layers[[1]]$style$type, "points")
+  expect_equal(scene$layers[[1]]$data$kind, "face_points")
+  expect_named(scene$layers[[1]]$data$columns, c("x", "y", "color", "size", "alpha"))
+  expect_equal(scene$layers[[2]]$style$type, "path")
+  expect_equal(scene$layers[[2]]$data$kind, "face_path")
+  expect_equal(length(scene$layers[[2]]$data$polylines), 2)
+  expect_equal(scene$layers[[3]]$style$type, "contour_lines")
+  expect_equal(scene$layers[[3]]$data$kind, "face_contour")
+  expect_equal(scene$layers[[3]]$axes, c("y", "z"))
+})
+
 test_that("alpha fade helpers preserve shape and clamp values", {
   z <- outer(seq(-1, 1, length.out = 12), seq(-1, 1, length.out = 9), function(x, y) exp(-(x^2 + y^2)))
   fades <- list(
@@ -776,6 +869,8 @@ test_that("exported HTML contains ABS renderer builder", {
   expect_true(grepl("addSurfaceMesh", html, fixed = TRUE))
   expect_true(grepl("addPolylineStack", html, fixed = TRUE))
   expect_true(grepl("addFaceProjection", html, fixed = TRUE))
+  expect_true(grepl("addFacePointsProjection", html, fixed = TRUE))
+  expect_true(grepl("addFacePolylineProjection", html, fixed = TRUE))
   expect_true(grepl("faceProjectionPoint", html, fixed = TRUE))
   expect_true(grepl("buildGuides", html, fixed = TRUE))
   expect_true(grepl("scene3d-guide", html, fixed = TRUE))

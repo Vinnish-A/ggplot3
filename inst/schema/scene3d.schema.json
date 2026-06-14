@@ -24,6 +24,7 @@
       "items": {
         "oneOf": [
           { "$ref": "#/$defs/pointCloudLayer" },
+          { "$ref": "#/$defs/polyline3dLayer" },
           { "$ref": "#/$defs/surfaceGridLayer" },
           { "$ref": "#/$defs/surfaceMeshLayer" },
           { "$ref": "#/$defs/contourStackLayer" },
@@ -176,6 +177,41 @@
               "minItems": 2,
               "maxItems": 2
             }
+          }
+        }
+      }
+    },
+    "polyline3dLayer": {
+      "type": "object",
+      "required": ["id", "type", "name", "visible", "space", "data", "style"],
+      "properties": {
+        "type": { "const": "polyline3d" },
+        "space": {
+          "type": "object",
+          "properties": {
+            "type": { "const": "world" }
+          }
+        },
+        "data": {
+          "type": "object",
+          "required": ["kind", "encoding", "polylines"],
+          "properties": {
+            "kind": { "const": "polyline3d" },
+            "encoding": { "const": "json-polylines" },
+            "polylines": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/polyline3" }
+            }
+          }
+        },
+        "style": {
+          "type": "object",
+          "properties": {
+            "type": { "enum": ["path", "segment"] },
+            "color": { "type": "string" },
+            "opacity": { "type": "number" },
+            "width": { "type": "number" },
+            "widthUnit": { "const": "px" }
           }
         }
       }
@@ -399,10 +435,27 @@
         "clip": { "type": "boolean" },
         "data": {
           "type": "object",
-          "required": ["kind", "encoding", "x", "y", "z", "shape", "order"],
           "properties": {
-            "kind": { "const": "grid2d" },
-            "encoding": { "const": "json-grid" },
+            "kind": { "enum": ["grid2d", "face_points", "face_path", "face_contour"] },
+            "encoding": { "enum": ["json-grid", "json-columns", "json-polylines"] },
+            "columns": { "type": "object" },
+            "polylines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "array", "items": { "type": "number" } },
+                  "y": { "type": "array", "items": { "type": "number" } },
+                  "level": {
+                    "anyOf": [
+                      { "type": "number" },
+                      { "type": "null" }
+                    ]
+                  }
+                }
+              }
+            },
             "order": { "const": "row-major" },
             "tessellation": { "enum": ["rect", "right1", "right2", "equilateral"] }
           }
@@ -410,10 +463,13 @@
         "style": {
           "type": "object",
           "properties": {
-            "type": { "enum": ["density_grid"] },
+            "type": { "enum": ["density_grid", "points", "path", "contour_lines"] },
             "material": { "enum": ["unlit"] },
             "fill": { "type": "string" },
-            "opacity": { "type": "number" }
+            "color": { "type": "string" },
+            "opacity": { "type": "number" },
+            "width": { "type": "number" },
+            "widthUnit": { "const": "px" }
           }
         }
       }

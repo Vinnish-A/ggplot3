@@ -42,6 +42,54 @@ geom_point3d <- function(mapping = NULL, data = NULL, size = 4, alpha = 1,
   )
 }
 
+geom_path3d <- function(mapping = NULL, data = NULL, colour = "#374151",
+                        alpha = 1, line_width = 1, name = "path", ...) {
+  dots <- list(...)
+  if (length(dots) > 0) {
+    stop("Unused arguments in geom_path3d(): ", paste(names(dots), collapse = ", "), call. = FALSE)
+  }
+  mapping <- normalize_aes3_mapping(mapping)
+  check_alpha_param(alpha)
+  check_line_width_param(line_width)
+
+  new_layer3d(
+    type = "polyline3d",
+    mapping = mapping,
+    data = data,
+    params = list(
+      geom = "path",
+      colour = colour,
+      alpha = alpha,
+      line_width = line_width,
+      name = name
+    )
+  )
+}
+
+geom_segment3d <- function(mapping = NULL, data = NULL, colour = "#374151",
+                           alpha = 1, line_width = 1, name = "segments", ...) {
+  dots <- list(...)
+  if (length(dots) > 0) {
+    stop("Unused arguments in geom_segment3d(): ", paste(names(dots), collapse = ", "), call. = FALSE)
+  }
+  mapping <- normalize_aes3_mapping(mapping)
+  check_alpha_param(alpha)
+  check_line_width_param(line_width)
+
+  new_layer3d(
+    type = "polyline3d",
+    mapping = mapping,
+    data = data,
+    params = list(
+      geom = "segment",
+      colour = colour,
+      alpha = alpha,
+      line_width = line_width,
+      name = name
+    )
+  )
+}
+
 geom_surface_grid3d <- function(x, y, z, grid = NULL, fill = "#4477AA",
                                 alpha = 0.65, name = "surface", ...) {
   fill_explicit <- !missing(fill)

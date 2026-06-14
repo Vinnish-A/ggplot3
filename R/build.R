@@ -16,6 +16,7 @@ as_scene3d <- function(plot) {
     compiled_layers[[i]] <- switch(
       layer$type,
       point_cloud = compile_point_cloud_layer(plot, layer, i, theme),
+      polyline3d = compile_polyline3d_layer(plot, layer, i, theme),
       surface_grid = compile_surface_grid_layer(layer, i, theme),
       surface_mesh = compile_surface_mesh_layer(layer, i, theme),
       surface_stat = compile_surface_stat_layer(plot, layer, i, theme),
@@ -134,6 +135,103 @@ compile_point_cloud_layer <- function(plot, layer, layer_index, theme) {
   )
 }
 
+compile_polyline3d_layer <- function(plot, layer, layer_index, theme) {
+  data <- if (is.null(layer$data)) plot$data else layer$data
+  if (is.null(data)) {
+    stop("polyline3d layer requires data.", call. = FALSE)
+  }
+  data <- as.data.frame(data)
+  mapping <- merge_mapping(as_mapping(plot$mapping), as_mapping(layer$mapping))
+
+  polylines <- if (identical(layer$params$geom, "segment")) {
+    compile_segment_polylines(data, mapping)
+  } else {
+    compile_path_polylines(data, mapping)
+  }
+
+  list(
+    id = paste0("layer-", layer_index),
+    type = "polyline3d",
+    name = layer$params$name,
+    visible = TRUE,
+    space = list(type = "world"),
+    data = list(
+      kind = "polyline3d",
+      encoding = "json-polylines",
+      polylines = polylines
+    ),
+    style = list(
+      type = layer$params$geom,
+      color = layer$params$colour,
+      opacity = layer$params$alpha,
+      width = layer$params$line_width,
+      widthUnit = "px"
+    )
+  )
+}
+
+compile_path_polylines <- function(data, mapping) {
+  for (required in c("x", "y", "z")) {
+    if (is.null(mapping[[required]])) {
+      stop("geom_path3d() requires mapping for x, y, and z; missing ", required, ".", call. = FALSE)
+    }
+  }
+  x <- get_mapped_column(data, mapping$x, "x")
+  y <- get_mapped_column(data, mapping$y, "y")
+  z <- get_mapped_column(data, mapping$z, "z")
+  groups <- get_polyline_groups(data, mapping, length(x))
+  polylines <- unname(lapply(split(seq_along(x), groups), function(idx) {
+    list(
+      x = unname(as.numeric(x[idx])),
+      y = unname(as.numeric(y[idx])),
+      z = unname(as.numeric(z[idx])),
+      level = NULL
+    )
+  }))
+  polylines[vapply(polylines, function(polyline) length(polyline$x) >= 2L, logical(1))]
+}
+
+compile_segment_polylines <- function(data, mapping) {
+  for (required in c("x", "y", "z", "xend", "yend", "zend")) {
+    if (is.null(mapping[[required]])) {
+      stop("geom_segment3d() requires mapping for x, y, z, xend, yend, and zend; missing ", required, ".", call. = FALSE)
+    }
+  }
+  x <- get_mapped_column(data, mapping$x, "x")
+  y <- get_mapped_column(data, mapping$y, "y")
+  z <- get_mapped_column(data, mapping$z, "z")
+  xend <- get_mapped_column(data, mapping$xend, "xend")
+  yend <- get_mapped_column(data, mapping$yend, "yend")
+  zend <- get_mapped_column(data, mapping$zend, "zend")
+  n <- length(x)
+  if (any(c(length(y), length(z), length(xend), length(yend), length(zend)) != n)) {
+    stop("Segment coordinates must have the same length.", call. = FALSE)
+  }
+  unname(lapply(seq_len(n), function(i) {
+    list(
+      x = unname(as.numeric(c(x[[i]], xend[[i]]))),
+      y = unname(as.numeric(c(y[[i]], yend[[i]]))),
+      z = unname(as.numeric(c(z[[i]], zend[[i]]))),
+      level = NULL
+    )
+  }))
+}
+
+get_polyline_groups <- function(data, mapping, n) {
+  group_mapping <- mapping$group
+  if (is.null(group_mapping)) {
+    return(rep("1", n))
+  }
+  if (!group_mapping %in% names(data)) {
+    stop("Column mapped to group not found in data: ", group_mapping, call. = FALSE)
+  }
+  groups <- data[[group_mapping]]
+  if (length(groups) != n) {
+    stop("Column mapped to group must have the same length as x/y/z.", call. = FALSE)
+  }
+  as.character(groups)
+}
+
 compile_surface_grid_layer <- function(layer, layer_index, theme) {
   p <- layer$params
   grid <- p$grid
@@ -203,6 +301,18 @@ resolve_point_colors <- function(data, mapping, explicit_colour, n, default_colo
       color_map <- stats::setNames(palette[seq_along(levels)], levels)
       return(unname(color_map[as.character(values)]))
     }
+    if (is.numeric(values)) {
+      if (length(values) != n || any(!is.finite(values))) {
+        stop("Column mapped to colour must be finite and match the point count: ", colour_mapping, call. = FALSE)
+      }
+      range <- range(values)
+      if (range[[1]] == range[[2]]) {
+        return(rep(grDevices::hcl.colors(1L, "Blue-Red 3"), n))
+      }
+      palette <- grDevices::hcl.colors(256L, "Blue-Red 3")
+      index <- pmax(1L, pmin(256L, as.integer(round((values - range[[1]]) / diff(range) * 255L)) + 1L))
+      return(unname(palette[index]))
+    }
   }
 
   rep(default_color, n)
@@ -246,6 +356,10 @@ compute_layer_bounds <- function(layer) {
     ))
   }
 
+  if (identical(layer$type, "polyline3d")) {
+    return(compute_polyline_bounds(layer$data$polylines))
+  }
+
   if (identical(layer$type, "surface_mesh")) {
     vertices <- matrix(layer$data$vertices, ncol = 3L, byrow = TRUE)
     return(list(
@@ -277,14 +391,35 @@ compute_layer_bounds <- function(layer) {
     axes <- layer$axes
     mins <- c(x = 0, y = 0, z = 0)
     maxs <- c(x = 0, y = 0, z = 0)
-    mins[[axes[[1]]]] <- min(data$x)
-    maxs[[axes[[1]]]] <- max(data$x)
-    mins[[axes[[2]]]] <- min(data$y)
-    maxs[[axes[[2]]]] <- max(data$y)
+    xy_bounds <- face_projection_xy_bounds(data)
+    mins[[axes[[1]]]] <- xy_bounds$min[[1]]
+    maxs[[axes[[1]]]] <- xy_bounds$max[[1]]
+    mins[[axes[[2]]]] <- xy_bounds$min[[2]]
+    maxs[[axes[[2]]]] <- xy_bounds$max[[2]]
     return(list(min = mins, max = maxs))
   }
 
   NULL
+}
+
+face_projection_xy_bounds <- function(data) {
+  if (identical(data$kind, "grid2d")) {
+    return(list(min = c(min(data$x), min(data$y)), max = c(max(data$x), max(data$y))))
+  }
+  if (identical(data$kind, "face_points")) {
+    columns <- data$columns
+    return(list(min = c(min(columns$x), min(columns$y)), max = c(max(columns$x), max(columns$y))))
+  }
+  if (identical(data$kind, "face_path") || identical(data$kind, "face_contour")) {
+    polylines <- data$polylines
+    xs <- unlist(lapply(polylines, function(polyline) polyline$x), use.names = FALSE)
+    ys <- unlist(lapply(polylines, function(polyline) polyline$y), use.names = FALSE)
+    if (length(xs) == 0L || length(ys) == 0L) {
+      return(list(min = c(0, 0), max = c(0, 0)))
+    }
+    return(list(min = c(min(xs), min(ys)), max = c(max(xs), max(ys))))
+  }
+  list(min = c(0, 0), max = c(0, 0))
 }
 
 compute_polyline_bounds <- function(polylines) {

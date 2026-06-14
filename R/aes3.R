@@ -68,7 +68,7 @@ mapping_expr_name <- function(expr) {
     return(expr)
   }
   if (inherits(expr, "quosure") && length(expr) >= 2L) {
-    expr <- expr[[2L]]
+    expr <- unclass(expr)[[2L]]
   } else if (inherits(expr, "formula") && length(expr) >= 2L) {
     expr <- expr[[2L]]
   }

@@ -64,6 +64,18 @@ p <- ggplot3(umap_df, aes3(UMAP1, UMAP2, z = z, colour = cluster)) +
     opacity = 0.55,
     name = "floor density projection"
   ) +
+  geom_face_density3d(
+    aes3(UMAP2, z),
+    plane = "xmax",
+    axes = c("y", "z"),
+    offset = 0.08,
+    grid_size = c(72, 42),
+    bandwidth = c(0.48, 0.05),
+    alpha = "combined_fade",
+    fill = "#D6E6F5",
+    opacity = 0.38,
+    name = "side density projection"
+  ) +
   stat_density_surface3d(
     aes3(UMAP1, UMAP2),
     grid_size = c(88, 88),

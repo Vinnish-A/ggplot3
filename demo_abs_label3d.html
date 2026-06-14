@@ -176,7 +176,7 @@
   <script id="scene3d-data" type="application/json">
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614222433",
+  "sceneId": "scene-20260614224337",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -728,6 +728,17 @@
     }
 
     function addFaceProjection(layer) {
+      const styleType = layer.style?.type || "density_grid";
+      if (styleType === "points") {
+        addFacePointsProjection(layer);
+      } else if (styleType === "path" || styleType === "contour_lines") {
+        addFacePolylineProjection(layer);
+      } else {
+        addFaceGridProjection(layer);
+      }
+    }
+
+    function addFaceGridProjection(layer) {
       const data = layer.data || {};
       const x = data.x || [];
       const y = data.y || [];
@@ -797,6 +808,68 @@
       const mesh = new THREE.Mesh(geometry, material);
       mesh.name = layer.name || "face_projection";
       world.add(mesh);
+    }
+
+    function addFacePointsProjection(layer) {
+      const columns = layer.data?.columns || {};
+      const n = Math.min(columns.x?.length || 0, columns.y?.length || 0);
+      const positions = new Float32Array(n * 3);
+      const colors = new Float32Array(n * 3);
+      const color = new THREE.Color();
+
+      for (let i = 0; i < n; i += 1) {
+        const point = faceProjectionPoint(layer, Number(columns.x[i]), Number(columns.y[i]));
+        positions[i * 3] = point[0];
+        positions[i * 3 + 1] = point[1];
+        positions[i * 3 + 2] = point[2];
+        includePoint(point[0], point[1], point[2]);
+        color.set(columns.color?.[i] || "#3366CC");
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      const opacity = average(columns.alpha, 1);
+      const material = new THREE.PointsMaterial({
+        size: average(columns.size, 3),
+        vertexColors: true,
+        opacity,
+        transparent: opacity < 1,
+        depthWrite: false,
+        sizeAttenuation: false
+      });
+      world.add(new THREE.Points(geometry, material));
+    }
+
+    function addFacePolylineProjection(layer) {
+      const items = layer.data?.polylines || [];
+      const material = new THREE.LineBasicMaterial({
+        color: new THREE.Color(layer.style?.color || "#374151"),
+        transparent: (layer.style?.opacity ?? 1) < 1,
+        opacity: layer.style?.opacity ?? 1
+      });
+      const group = new THREE.Group();
+      group.name = layer.name || layer.type;
+
+      for (const item of items) {
+        const n = Math.min(item.x?.length || 0, item.y?.length || 0);
+        if (n < 2) continue;
+        const positions = new Float32Array(n * 3);
+        for (let i = 0; i < n; i += 1) {
+          const point = faceProjectionPoint(layer, Number(item.x[i]), Number(item.y[i]));
+          positions[i * 3] = point[0];
+          positions[i * 3 + 1] = point[1];
+          positions[i * 3 + 2] = point[2];
+          includePoint(point[0], point[1], point[2]);
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        group.add(new THREE.Line(geometry, material.clone()));
+      }
+      world.add(group);
     }
 
     function faceProjectionPoint(layer, u, v) {
@@ -873,6 +946,7 @@
     for (const layer of sceneData.layers || []) {
       if (layer.visible === false) continue;
       if (layer.type === "point_cloud") addPointCloud(layer);
+      if (layer.type === "polyline3d") addPolylineStack(layer, "polylines");
       if (layer.type === "surface_grid") addSurfaceGrid(layer);
       if (layer.type === "surface_mesh") addSurfaceMesh(layer);
       if (layer.type === "contour_stack") addPolylineStack(layer, "polylines");
