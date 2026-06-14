@@ -12,12 +12,16 @@ engine.
 
 - `ggplot3()` plot object with `+` composition.
 - `aes3()` mapping without quosures, rlang, ggplot2 internals, grid, or grobs.
+- ggplot2-like aes input normalization and a narrow `ggplot3_from_ggplot()` adapter.
 - `geom_point3d()` point cloud layer.
 - `geom_surface_grid3d()` gridded surface layer, preferably via `grid2d()`.
 - `grid2d()` reusable surface grid objects with optional alpha/mask payloads.
+- R-side surface-producing stats: `stat_density_surface3d()`, `stat_function_surface3d()`, and `stat_smooth_surface3d()`.
+- Scene3D-native face projections with `geom_face_density3d()` and `position_on_plane3d()`.
 - `alpha_edge_fade()`, `alpha_density_fade()`, and `alpha_combined_fade()` for soft surface alpha.
 - `coord_3d()` camera and projection settings.
-- `grid_3d()` and `coord_umap3d()` for coordinate/grid display protocol.
+- `grid_3d()`, `axis_3d()`, and `coord_umap3d()` for coordinate/grid/axis display protocol.
+- `guide_legend_scene3d()` and `guide_colorbar_scene3d()` for first-class guide JSON.
 - `theme_3d()` and `theme_3d_scientific()` JSON-compatible theme defaults.
 - `theme_3d_umap()` visual defaults for UMAP-style scenes.
 - `element_material_3d()` and `element_light_3d()` for material/light theme entries.
@@ -123,6 +127,123 @@ This writes:
 - `demo_umap_positive_grid_fade.html`
 - `demo_umap_positive_grid_fade.scene.json`
 
+## Surface stats
+
+Stage 3 separates surface-producing stats from surface-rendering geoms. Surface
+stats run in R, produce `grid2d()` objects, and compile to ordinary
+`surface_grid` layers in Scene3D. The browser does not recompute density,
+smooths, or function surfaces.
+
+```r
+p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
+  stat_density_surface3d(
+    aes3(x, y),
+    grid_size = c(72, 72),
+    bandwidth = c(0.42, 0.42),
+    alpha = "combined_fade",
+    tessellation = "right1"
+  ) +
+  geom_point3d()
+```
+
+The compiled surface stores stat metadata as JSON-compatible data:
+
+```json
+"stat": {
+  "type": "density_surface",
+  "method": "gaussian_kde_product_kernel",
+  "gridSize": [72, 72],
+  "computedBy": "R"
+}
+```
+
+`grid2d()` also carries a `tessellation` protocol field. The renderer uses it
+only to triangulate an already-computed surface:
+
+```r
+grid2d(xgrid, ygrid, zmat, tessellation = "right2")
+```
+
+Run the surface stat demo:
+
+```sh
+Rscript examples/demo_surface_stats3d.R
+```
+
+This writes:
+
+- `demo_surface_stats3d.html`
+- `demo_surface_stats3d.scene.json`
+
+## Face projection
+
+Face projection is a separate rendering space. It maps an already-computed 2D
+grid onto a named 3D plane or cube face. It is not an arbitrary ggplot2 layer
+projection and it does not ask the browser to compute density.
+
+```r
+p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
+  geom_face_density3d(
+    aes3(x, y),
+    plane = "zmin",
+    axes = c("x", "y"),
+    offset = -0.05
+  ) +
+  geom_point3d()
+```
+
+The emitted layer has `type = "face_projection"` and declares `plane`, `axes`,
+`offset`, `clip`, grid data, and unlit style as JSON.
+
+Run the face projection demo:
+
+```sh
+Rscript examples/demo_face_projection3d.R
+```
+
+This writes:
+
+- `demo_face_projection3d.html`
+- `demo_face_projection3d.scene.json`
+
+## Axes and guides
+
+`grid_3d()` controls grid planes, grid domain, and grid breaks. `axis_3d()`
+controls axis appearance and label/tick placement. Coordinate origin and grid
+domain remain coordinate concerns, not theme concerns.
+
+```r
+p <- ggplot3(df, aes3(x, y, z = z, colour = group)) +
+  geom_point3d() +
+  coord_3d(
+    grid = grid_3d(domain = "positive", planes = "xy"),
+    axis = axis_3d(length_fraction = 0.6, arrows = TRUE)
+  ) +
+  guide_legend_scene3d(
+    aesthetic = "colour",
+    title = "cluster",
+    labels = c("A", "B"),
+    values = c("#3366CC", "#CC6633")
+  )
+```
+
+Guides compile into top-level `scene$guides` entries and are rendered as a
+screen/UI-space overlay by the HTML renderer.
+
+## ggplot2-like input
+
+`ggplot3()` can accept ggplot2-like `aes()` mappings as input. They are
+normalized immediately into `aes3()` string mappings. Scene3D does not contain
+quosures, formulas, ggplot2 layer objects, or ggproto objects.
+
+```r
+ggplot3(df, ggplot2::aes(x, y, z = z, colour = group)) +
+  geom_point3d()
+```
+
+`ggplot3_from_ggplot()` is a narrow adapter for simple ggplot point plots. It is
+an input bridge only and is not part of the rendering core.
+
 ## ABS anchored annotations
 
 ABS means anchored billboard space: the annotation starts from a real world-space
@@ -172,6 +293,26 @@ Rscript examples/demo_abs_occlusion3d.R
 Rscript examples/demo_abs_multi_labels3d.R
 ```
 
+## UMAP density ABS showcase
+
+The Stage 3 showcase combines the core spaces:
+
+- world space point cloud;
+- R-computed density surface;
+- floor face projection;
+- positive grid and shortened arrow axes;
+- ABS cluster labels;
+- guide overlay.
+
+```sh
+Rscript examples/demo_umap_density_abs_showcase.R
+```
+
+This writes:
+
+- `demo_umap_density_abs_showcase.html`
+- `demo_umap_density_abs_showcase.scene.json`
+
 ## Run Tests
 
 ```sh
@@ -182,13 +323,17 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 
 - No Shiny.
 - No ggplot2 internals, quosures, grid, or grobs.
+- `ggplot3_from_ggplot()` currently supports only simple point layers.
 - No full scale system; colour mapping is limited to discrete character/factor columns.
+- Surface stats are intentionally small: density uses an R Gaussian product-kernel estimator and smooth surfaces use a quadratic `lm`.
+- Face projection currently supports density grids, not arbitrary 2D ggplot layer projection.
 - No R-side headless PNG export.
 - No local three.js vendor bundle yet.
 - Camera interaction is intentionally minimal: drag rotates and wheel zooms; pan is not implemented yet.
 - Point size is rendered as screen-space average size in the prototype renderer.
 - Scene3D schema is intentionally minimal.
 - Theme3D intentionally does not control camera, projection, stats, scale domains, or data transforms.
+- Theme3D intentionally does not control axis length, axis arrows, guide domains, or guide entries.
 - `coord_umap3d()` controls display conventions only; UMAP computation is out of scope.
 - ABS annotations are stable enough for anchored labels, but collision avoidance is not implemented yet.
 
@@ -198,4 +343,4 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 2. Add local vendor fallback for three.js and OrbitControls.
 3. Expand renderer controls for visibility, opacity, reset, PNG, and view import.
 4. Add focused tests for theme resolution, colour mapping, and invalid layers.
-5. Add R-side scientific stats such as KDE surface generation without moving stat work into JS.
+5. Add face projection, axis guides, and a product-grade UMAP showcase on top of the new surface stat protocol.

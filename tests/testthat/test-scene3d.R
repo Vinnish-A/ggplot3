@@ -14,7 +14,7 @@ find_package_root <- function(path = getwd()) {
 
 root <- find_package_root()
 source_files <- file.path(root, "R", c(
-  "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "layers.R", "abs3d.R", "build.R", "export.R", "demo_data.R"
+  "aes3.R", "grid3d.R", "theme3d.R", "scene3d.R", "ggplot_adapter.R", "layers.R", "abs3d.R", "surface_stats.R", "face_projection.R", "build.R", "export.R", "demo_data.R"
 ))
 invisible(lapply(source_files, source))
 
@@ -96,6 +96,27 @@ test_that("point layers inherit and override data and mapping predictably", {
   expect_length(unique(columns$color), 2)
 })
 
+test_that("ggplot2-like aes mappings normalize without quosure leakage", {
+  df <- data.frame(x = 1:3, y = 2:4, z = 3:5, group = c("a", "b", "a"))
+  ggplot_like_mapping <- structure(
+    list(x = stats::as.formula("~x"), y = stats::as.formula("~y"), z = stats::as.formula("~z"), colour = stats::as.formula("~group")),
+    class = "uneval"
+  )
+
+  p <- ggplot3(df, ggplot_like_mapping) +
+    geom_point3d(mapping = structure(list(x = quote(x), y = quote(y), z = quote(z)), class = "uneval"))
+
+  expect_s3_class(p$mapping, "ggplot3scene_aes")
+  expect_equal(as_mapping(p$mapping)$colour, "group")
+
+  scene <- as_scene3d(p)
+  json <- jsonlite::toJSON(scene, auto_unbox = TRUE)
+  expect_equal(scene$layers[[1]]$data$columns$x, df$x)
+  expect_false(grepl("quosure", json, fixed = TRUE))
+  expect_false(grepl("uneval", json, fixed = TRUE))
+  expect_false(grepl("formula", json, fixed = TRUE))
+})
+
 test_that("explicit point colour overrides mapped colour", {
   df <- data.frame(x = 1:4, y = 1:4, z = 1:4, group = c("a", "b", "a", "b"))
 
@@ -128,7 +149,7 @@ test_that("coord_3d compiles camera and axes without theme leakage", {
   expect_equal(scene$camera$target, c(1, 1, 1))
   expect_equal(scene$camera$zoom, 1.5)
   expect_equal(scene$coordinateSystem$aspect$ratio, c(1, 2, 3))
-  expect_equal(names(scene$axes), c("x", "y", "z", "grid"))
+  expect_equal(names(scene$axes), c("x", "y", "z", "grid", "style", "labelPlacement", "tickPlacement"))
   expect_null(scene$theme$camera)
   expect_equal(scene$theme$scene$background, "#EEEEEE")
 })
@@ -285,6 +306,121 @@ test_that("surface grid geoms compile from grid2d and legacy x/y/z", {
   expect_equal(scene_legacy$layers[[1]]$data$shape, c(length(xgrid), length(ygrid)))
 })
 
+test_that("surface objects declare reusable protocol classes", {
+  x <- c(0, 1)
+  y <- c(0, 1)
+  z <- outer(x, y, `+`)
+  grid <- surface_grid(x, y, z, tessellation = "right2")
+
+  expect_s3_class(grid, "ggplot3scene_grid2d")
+  expect_equal(grid$tessellation, "right2")
+  expect_equal(compile_grid2d_data(grid)$tessellation, "right2")
+
+  mesh <- surface_mesh(
+    vertices = matrix(c(0, 0, 0, 1, 0, 0, 0, 1, 0), ncol = 3, byrow = TRUE),
+    faces = matrix(c(1, 2, 3), ncol = 3)
+  )
+  expect_s3_class(mesh, "ggplot3scene_surface_mesh")
+  expect_s3_class(contour_stack(list()), "ggplot3scene_contour_stack")
+  expect_s3_class(ridgeline_stack(list()), "ggplot3scene_ridgeline_stack")
+})
+
+test_that("surface stats compile to surface_grid with R stat metadata", {
+  set.seed(1)
+  df <- data.frame(
+    x = c(stats::rnorm(20, -1), stats::rnorm(20, 1)),
+    y = c(stats::rnorm(20, -1), stats::rnorm(20, 1)),
+    z = 0
+  )
+
+  p <- ggplot3(df, aes3(x, y, z = z)) +
+    stat_density_surface3d(
+      aes3(x, y),
+      grid_size = c(16, 18),
+      bandwidth = c(0.5, 0.6),
+      bounds = list(x = c(-3, 3), y = c(-3, 3)),
+      alpha = "combined_fade",
+      tessellation = "right1"
+    ) +
+    geom_point3d()
+
+  scene <- as_scene3d(p)
+  surface <- scene$layers[[1]]
+
+  expect_equal(surface$type, "surface_grid")
+  expect_equal(surface$data$kind, "grid2d")
+  expect_equal(surface$data$shape, c(16, 18))
+  expect_equal(surface$data$tessellation, "right1")
+  expect_false(is.null(surface$data$alpha))
+  expect_equal(surface$data$metadata$stat$type, "density_surface")
+  expect_equal(surface$data$metadata$stat$computedBy, "R")
+  expect_equal(surface$data$metadata$stat$gridSize, c(16, 18))
+  expect_equal(surface$metadata$stat$method, "gaussian_kde_product_kernel")
+})
+
+test_that("function and smooth surface stats compile without language objects in scene JSON", {
+  df <- expand.grid(x = seq(-1, 1, length.out = 5), y = seq(-1, 1, length.out = 5))
+  df$z <- df$x^2 - df$y
+
+  p <- ggplot3(df, aes3(x, y, z = z)) +
+    stat_function_surface3d(
+      function(x, y) x^2 + y^2,
+      xlim = c(-1, 1),
+      ylim = c(-1, 1),
+      grid_size = 12,
+      tessellation = "right2"
+    ) +
+    stat_smooth_surface3d(grid_size = c(10, 11)) +
+    geom_point3d()
+
+  scene <- as_scene3d(p)
+  expect_equal(scene$layers[[1]]$type, "surface_grid")
+  expect_equal(scene$layers[[1]]$data$tessellation, "right2")
+  expect_equal(scene$layers[[1]]$data$metadata$stat$type, "function_surface")
+  expect_equal(scene$layers[[2]]$data$metadata$stat$type, "smooth_surface")
+
+  json <- jsonlite::toJSON(scene, auto_unbox = TRUE)
+  expect_false(grepl("function\\(", json))
+  expect_false(grepl("ggplot3scene_surface_stat_layer", json, fixed = TRUE))
+})
+
+test_that("face projection protocol compiles density grid onto a plane", {
+  set.seed(2)
+  df <- data.frame(
+    x = stats::rnorm(40),
+    y = stats::rnorm(40),
+    z = stats::rnorm(40)
+  )
+  pos <- position_on_plane3d("zmin", axes = c("x", "y"), offset = -0.1)
+  expect_s3_class(pos, "ggplot3scene_plane_position")
+  expect_equal(pos$plane, "zmin")
+  expect_equal(pos$axes, c("x", "y"))
+
+  p <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_face_density3d(
+      aes3(x, y),
+      plane = "zmin",
+      grid_size = c(14, 15),
+      bandwidth = c(0.5, 0.5),
+      alpha = "combined_fade",
+      offset = -0.05
+    ) +
+    geom_point3d()
+  scene <- as_scene3d(p)
+  layer <- scene$layers[[1]]
+
+  expect_equal(layer$type, "face_projection")
+  expect_equal(layer$space$type, "face_plane")
+  expect_equal(layer$plane, "zmin")
+  expect_equal(layer$axes, c("x", "y"))
+  expect_equal(layer$offset, -0.05)
+  expect_equal(layer$data$kind, "grid2d")
+  expect_equal(layer$data$shape, c(14, 15))
+  expect_false(is.null(layer$data$alpha))
+  expect_equal(layer$data$metadata$stat$type, "face_density")
+  expect_equal(layer$data$metadata$stat$computedBy, "R")
+})
+
 test_that("alpha fade helpers preserve shape and clamp values", {
   z <- outer(seq(-1, 1, length.out = 12), seq(-1, 1, length.out = 9), function(x, y) exp(-(x^2 + y^2)))
   fades <- list(
@@ -323,6 +459,62 @@ test_that("coord_3d grid protocol compiles origin and positive domain", {
   expect_equal(scene$axes$grid$planes, "xy")
   expect_equal(scene$axes$grid$axisLengthFraction, 0.5)
   expect_true(scene$axes$grid$axisArrows)
+})
+
+test_that("axis_3d separates axis styling from grid protocol", {
+  df <- data.frame(x = c(-1, 2), y = c(-2, 3), z = c(0, 1))
+
+  p <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_point3d() +
+    coord_3d(
+      grid = grid_3d(domain = "positive", planes = "xy"),
+      axis = axis_3d(
+        length_fraction = 0.42,
+        arrows = TRUE,
+        labels = FALSE,
+        titles = TRUE,
+        label_placement = "outside",
+        tick_placement = "inside"
+      )
+    )
+
+  scene <- as_scene3d(p)
+  expect_equal(scene$axes$grid$domainMode, "positive")
+  expect_equal(scene$axes$style$lengthFraction, 0.42)
+  expect_true(scene$axes$style$arrows)
+  expect_false(scene$axes$style$labels)
+  expect_true(scene$axes$style$titles)
+  expect_equal(scene$axes$labelPlacement, "outside")
+  expect_equal(scene$axes$tickPlacement, "inside")
+  expect_null(scene$theme$axis$lengthFraction)
+  expect_null(scene$theme$axis$arrows)
+})
+
+test_that("guide protocol compiles language-neutral legends and colorbars", {
+  df <- data.frame(x = 1:3, y = 1:3, z = 1:3)
+
+  p <- ggplot3(df, aes3(x, y, z = z)) +
+    geom_point3d() +
+    guide_legend_scene3d(
+      aesthetic = "colour",
+      title = "cluster",
+      labels = c("A", "B"),
+      values = c("#3366CC", "#CC6633")
+    ) +
+    guide_colorbar_scene3d(
+      aesthetic = "density",
+      title = "density",
+      domain = c(0, 1),
+      palette = c("#FFFFFF", "#4477AA")
+    )
+
+  scene <- as_scene3d(p)
+  expect_length(scene$guides, 2)
+  expect_equal(scene$guides[[1]]$type, "legend")
+  expect_equal(scene$guides[[1]]$entries[[1]]$label, "A")
+  expect_equal(scene$guides[[2]]$type, "colorbar")
+  expect_equal(scene$guides[[2]]$materialMode, "unlit")
+  expect_false(inherits(scene$guides[[1]], "ggplot3scene_guide"))
 })
 
 test_that("coord_umap3d compiles to positive xy grid", {
@@ -528,4 +720,9 @@ test_that("exported HTML contains ABS renderer builder", {
   expect_true(grepl("CanvasTexture", html, fixed = TRUE))
   expect_true(grepl("SpriteMaterial", html, fixed = TRUE))
   expect_true(grepl("setDrawRange", html, fixed = TRUE))
+  expect_true(grepl("buildSurfaceGridIndices", html, fixed = TRUE))
+  expect_true(grepl("addFaceProjection", html, fixed = TRUE))
+  expect_true(grepl("faceProjectionPoint", html, fixed = TRUE))
+  expect_true(grepl("buildGuides", html, fixed = TRUE))
+  expect_true(grepl("scene3d-guide", html, fixed = TRUE))
 })

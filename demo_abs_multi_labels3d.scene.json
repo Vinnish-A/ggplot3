@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614214436",
+  "sceneId": "scene-20260614221225",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -372,8 +372,17 @@
       },
       "axisLengthFraction": 1,
       "axisArrows": false
-    }
+    },
+    "style": {
+      "lengthFraction": 1,
+      "arrows": false,
+      "labels": true,
+      "titles": true
+    },
+    "labelPlacement": "auto",
+    "tickPlacement": "auto"
   },
+  "guides": [],
   "lights": {
     "ambient": {
       "color": "#FFFFFF",

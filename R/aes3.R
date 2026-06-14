@@ -40,8 +40,43 @@ as_mapping <- function(mapping) {
   if (is.null(mapping)) {
     return(list())
   }
-  if (!inherits(mapping, "ggplot3scene_aes")) {
-    stop("mapping must be created with aes3().", call. = FALSE)
+  unclass(normalize_aes3_mapping(mapping))
+}
+
+normalize_aes3_mapping <- function(mapping) {
+  if (is.null(mapping)) {
+    return(NULL)
   }
-  unclass(mapping)
+  if (inherits(mapping, "ggplot3scene_aes")) {
+    return(mapping)
+  }
+  if (!is.list(mapping)) {
+    stop("mapping must be created with aes3() or be a ggplot2-like aes mapping.", call. = FALSE)
+  }
+
+  aes_names <- names(mapping)
+  if (is.null(aes_names) || any(!nzchar(aes_names))) {
+    stop("ggplot2-like aes mappings must have named aesthetics.", call. = FALSE)
+  }
+  out <- lapply(mapping, mapping_expr_name)
+  class(out) <- c("ggplot3scene_aes", "list")
+  out
+}
+
+mapping_expr_name <- function(expr) {
+  if (is.character(expr) && length(expr) == 1L) {
+    return(expr)
+  }
+  if (inherits(expr, "quosure") && length(expr) >= 2L) {
+    expr <- expr[[2L]]
+  } else if (inherits(expr, "formula") && length(expr) >= 2L) {
+    expr <- expr[[2L]]
+  }
+  if (is.name(expr)) {
+    return(as.character(expr))
+  }
+  if (is.call(expr) && identical(expr[[1L]], as.name("I")) && length(expr) == 2L && is.name(expr[[2L]])) {
+    return(as.character(expr[[2L]]))
+  }
+  deparse(expr, width.cutoff = 500L)
 }

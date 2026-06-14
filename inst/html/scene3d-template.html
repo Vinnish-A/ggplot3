@@ -66,6 +66,57 @@
       overflow: hidden;
       z-index: 1;
     }
+    #guide-layer {
+      position: absolute;
+      right: 14px;
+      top: 14px;
+      display: grid;
+      gap: 8px;
+      max-width: min(260px, calc(100vw - 28px));
+      pointer-events: none;
+      z-index: 2;
+    }
+    .scene3d-guide {
+      border: 1px solid rgba(209, 213, 219, 0.92);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #111827;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.25;
+      box-shadow: 0 1px 4px rgba(17, 24, 39, 0.08);
+    }
+    .scene3d-guide-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .scene3d-guide-row {
+      display: grid;
+      grid-template-columns: 12px 1fr;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .scene3d-guide-swatch {
+      width: 12px;
+      height: 12px;
+      border: 1px solid rgba(17, 24, 39, 0.18);
+      border-radius: 2px;
+    }
+    .scene3d-colorbar-ramp {
+      width: 140px;
+      height: 10px;
+      border: 1px solid rgba(17, 24, 39, 0.18);
+      border-radius: 2px;
+    }
+    .scene3d-colorbar-range {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 4px;
+      color: #4b5563;
+      font-variant-numeric: tabular-nums;
+    }
     .abs-label {
       position: absolute;
       left: 0;
@@ -118,6 +169,7 @@
     <div id="viewport">
       <div id="fallback">This prototype loads three.js from a CDN. The Scene3D data is embedded in this file, but first render requires network access unless a local vendor bundle is added later.</div>
       <div id="abs-label-layer"></div>
+      <div id="guide-layer"></div>
     </div>
   </div>
 
@@ -133,8 +185,11 @@
     const status = document.getElementById("status");
     const fallback = document.getElementById("fallback");
     const absLabelLayer = document.getElementById("abs-label-layer");
+    const guideLayer = document.getElementById("guide-layer");
 
     THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
+
+    buildGuides(sceneData.guides || []);
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(sceneData.theme?.scene?.background || "#ffffff");
@@ -174,6 +229,50 @@
       const pos = key.position || [3, -4, 5];
       light.position.set(pos[0], pos[1], pos[2]);
       scene.add(light);
+    }
+
+    function buildGuides(guides) {
+      guideLayer.innerHTML = "";
+      if (!guides || guides.length === 0) return;
+      for (const guide of guides) {
+        const el = document.createElement("div");
+        el.className = "scene3d-guide";
+        if (guide.type === "legend") {
+          el.innerHTML = `<div class="scene3d-guide-title">${escapeHtml(guide.title || guide.aesthetic || "")}</div>`;
+          for (const entry of guide.entries || []) {
+            const row = document.createElement("div");
+            row.className = "scene3d-guide-row";
+            row.innerHTML = `<span class="scene3d-guide-swatch"></span><span>${escapeHtml(entry.label || "")}</span>`;
+            row.querySelector(".scene3d-guide-swatch").style.background = entry.value || "#3366CC";
+            el.appendChild(row);
+          }
+        } else if (guide.type === "colorbar") {
+          const palette = guide.palette || ["#ffffff", "#4477AA"];
+          const domain = guide.domain || [0, 1];
+          el.innerHTML = `
+            <div class="scene3d-guide-title">${escapeHtml(guide.title || guide.aesthetic || "")}</div>
+            <div class="scene3d-colorbar-ramp"></div>
+            <div class="scene3d-colorbar-range"><span>${formatGuideNumber(domain[0])}</span><span>${formatGuideNumber(domain[1])}</span></div>
+          `;
+          el.querySelector(".scene3d-colorbar-ramp").style.background = `linear-gradient(90deg, ${palette.join(", ")})`;
+        }
+        guideLayer.appendChild(el);
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function formatGuideNumber(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "";
+      return Math.abs(number) >= 100 ? number.toFixed(0) : number.toPrecision(3).replace(/\.?0+$/, "");
     }
 
     function addPointCloud(layer) {
@@ -235,16 +334,7 @@
         }
       }
 
-      const indices = [];
-      for (let i = 0; i < nx - 1; i += 1) {
-        for (let j = 0; j < ny - 1; j += 1) {
-          const a = i * ny + j;
-          const b = (i + 1) * ny + j;
-          const c = (i + 1) * ny + (j + 1);
-          const d = i * ny + (j + 1);
-          indices.push(a, b, d, b, c, d);
-        }
-      }
+      const indices = buildSurfaceGridIndices(nx, ny, layer.data.tessellation || "rect", layer.data.mask || null);
 
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -299,6 +389,131 @@
       world.add(new THREE.Mesh(geometry, material));
     }
 
+    function addFaceProjection(layer) {
+      const data = layer.data || {};
+      const x = data.x || [];
+      const y = data.y || [];
+      const nx = data.shape?.[0] || x.length;
+      const ny = data.shape?.[1] || y.length;
+      const positions = new Float32Array(nx * ny * 3);
+
+      for (let i = 0; i < nx; i += 1) {
+        for (let j = 0; j < ny; j += 1) {
+          const idx = i * ny + j;
+          const point = faceProjectionPoint(layer, Number(x[i]), Number(y[j]));
+          positions[idx * 3] = point[0];
+          positions[idx * 3 + 1] = point[1];
+          positions[idx * 3 + 2] = point[2];
+          includePoint(point[0], point[1], point[2]);
+        }
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setIndex(buildSurfaceGridIndices(nx, ny, data.tessellation || "rect", data.mask || null));
+      geometry.computeVertexNormals();
+
+      const fill = new THREE.Color(layer.style?.fill || "#4477AA");
+      const opacity = layer.style?.opacity ?? 0.5;
+      let material;
+      if (data.alpha && data.alpha.length === nx * ny) {
+        const alpha = new Float32Array(nx * ny);
+        for (let i = 0; i < alpha.length; i += 1) {
+          alpha[i] = THREE.MathUtils.clamp(Number(data.alpha[i]), 0, 1);
+        }
+        geometry.setAttribute("alpha", new THREE.BufferAttribute(alpha, 1));
+        material = new THREE.ShaderMaterial({
+          uniforms: {
+            fillColor: { value: fill },
+            opacity: { value: opacity }
+          },
+          vertexShader: `
+            attribute float alpha;
+            varying float vAlpha;
+            void main() {
+              vAlpha = alpha;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 fillColor;
+            uniform float opacity;
+            varying float vAlpha;
+            void main() {
+              gl_FragColor = vec4(fillColor, opacity * vAlpha);
+            }
+          `,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+      } else {
+        material = new THREE.MeshBasicMaterial({
+          color: fill,
+          opacity,
+          transparent: opacity < 1,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+      }
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = layer.name || "face_projection";
+      world.add(mesh);
+    }
+
+    function faceProjectionPoint(layer, u, v) {
+      const axes = layer.axes || ["x", "y"];
+      const point = [0, 0, 0];
+      point[axisIndex(axes[0])] = u;
+      point[axisIndex(axes[1])] = v;
+
+      const plane = layer.plane || "zmin";
+      const offset = Number(layer.offset || 0);
+      const domain = sceneData.coordinateSystem?.domain || {};
+      const origin = sceneData.coordinateSystem?.origin || [0, 0, 0];
+      const constantAxis = faceConstantAxis(plane);
+      const constantIdx = axisIndex(constantAxis);
+      point[constantIdx] = faceConstantValue(plane, constantAxis, domain, origin) + offset;
+      return point;
+    }
+
+    function faceConstantAxis(plane) {
+      if (plane === "xy" || plane === "zmin" || plane === "zmax") return "z";
+      if (plane === "xz" || plane === "ymin" || plane === "ymax") return "y";
+      if (plane === "yz" || plane === "xmin" || plane === "xmax") return "x";
+      return "z";
+    }
+
+    function faceConstantValue(plane, axis, domain, origin) {
+      const range = domain[axis] || [-1, 1];
+      if (plane.endsWith("min")) return Number(range[0]);
+      if (plane.endsWith("max")) return Number(range[1]);
+      return Number(origin[axisIndex(axis)] || 0);
+    }
+
+    function buildSurfaceGridIndices(nx, ny, tessellation, mask) {
+      const indices = [];
+      for (let i = 0; i < nx - 1; i += 1) {
+        for (let j = 0; j < ny - 1; j += 1) {
+          const a = i * ny + j;
+          const b = (i + 1) * ny + j;
+          const c = (i + 1) * ny + (j + 1);
+          const d = i * ny + (j + 1);
+          if (mask && !(mask[a] && mask[b] && mask[c] && mask[d])) continue;
+
+          const mode = tessellation === "equilateral"
+            ? ((i + j) % 2 === 0 ? "right1" : "right2")
+            : tessellation;
+          if (mode === "right2") {
+            indices.push(a, b, c, a, c, d);
+          } else {
+            indices.push(a, b, d, b, c, d);
+          }
+        }
+      }
+      return indices;
+    }
+
     function average(values, fallback) {
       if (!values || values.length === 0) return fallback;
       let total = 0;
@@ -321,6 +536,7 @@
       if (layer.visible === false) continue;
       if (layer.type === "point_cloud") addPointCloud(layer);
       if (layer.type === "surface_grid") addSurfaceGrid(layer);
+      if (layer.type === "face_projection") addFaceProjection(layer);
     }
 
     addLights();
@@ -362,8 +578,9 @@
         ? (gridSpec.domain || coordinateSystem?.domain || {})
         : (coordinateSystem?.domain || {});
       const origin = coordinateSystem?.origin || [0, 0, 0];
-      const axisLengthFraction = THREE.MathUtils.clamp(Number(gridSpec.axisLengthFraction ?? 1), 0.01, 1);
-      const axisArrows = gridSpec.axisArrows === true;
+      const axisStyle = axesSpec?.style || {};
+      const axisLengthFraction = THREE.MathUtils.clamp(Number(axisStyle.lengthFraction ?? gridSpec.axisLengthFraction ?? 1), 0.01, 1);
+      const axisArrows = (axisStyle.arrows ?? gridSpec.axisArrows) === true;
 
       if (axesSpec?.x?.visible !== false) {
         addAxisWithArrow(positions, "x", domain.x || [-1, 1], origin, axisLengthFraction, axisArrows);

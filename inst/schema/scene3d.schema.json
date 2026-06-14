@@ -25,6 +25,7 @@
         "oneOf": [
           { "$ref": "#/$defs/pointCloudLayer" },
           { "$ref": "#/$defs/surfaceGridLayer" },
+          { "$ref": "#/$defs/faceProjectionLayer" },
           { "$ref": "#/$defs/absAnnotationLayer" }
         ]
       }
@@ -56,7 +57,27 @@
             "domain": { "$ref": "#/$defs/domain3" },
             "majorBreaks": { "type": "object" }
           }
-        }
+        },
+        "style": {
+          "type": "object",
+          "properties": {
+            "lengthFraction": { "type": "number" },
+            "arrows": { "type": "boolean" },
+            "labels": { "type": "boolean" },
+            "titles": { "type": "boolean" }
+          }
+        },
+        "labelPlacement": { "enum": ["auto", "outside", "inside", "none"] },
+        "tickPlacement": { "enum": ["auto", "outside", "inside", "none"] }
+      }
+    },
+    "guides": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/colorbarGuide" },
+          { "$ref": "#/$defs/legendGuide" }
+        ]
       }
     },
     "lights": { "type": "object" },
@@ -114,6 +135,26 @@
             "kind": { "const": "grid2d" },
             "encoding": { "const": "json-grid" },
             "order": { "const": "row-major" },
+            "tessellation": { "enum": ["rect", "right1", "right2", "equilateral"] },
+            "metadata": {
+              "type": "object",
+              "properties": {
+                "stat": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": ["identity_surface", "function_surface", "density_surface", "smooth_surface"]
+                    },
+                    "method": { "type": "string" },
+                    "gridSize": {
+                      "type": "array",
+                      "items": { "type": "integer" }
+                    },
+                    "computedBy": { "const": "R" }
+                  }
+                }
+              }
+            },
             "alpha": {
               "anyOf": [
                 { "type": "array", "items": { "type": "number" } },
@@ -200,6 +241,78 @@
               }
             },
             "text": { "type": "object" }
+          }
+        }
+      }
+    },
+    "colorbarGuide": {
+      "type": "object",
+      "required": ["type", "aesthetic", "title", "domain", "palette", "materialMode"],
+      "properties": {
+        "type": { "const": "colorbar" },
+        "aesthetic": { "type": "string" },
+        "title": { "type": "string" },
+        "domain": { "$ref": "#/$defs/range2" },
+        "palette": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "materialMode": { "enum": ["unlit", "lit"] }
+      }
+    },
+    "legendGuide": {
+      "type": "object",
+      "required": ["type", "aesthetic", "title", "entries", "materialMode"],
+      "properties": {
+        "type": { "const": "legend" },
+        "aesthetic": { "type": "string" },
+        "title": { "type": "string" },
+        "entries": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "materialMode": { "enum": ["unlit", "lit"] }
+      }
+    },
+    "faceProjectionLayer": {
+      "type": "object",
+      "required": ["id", "type", "name", "visible", "space", "plane", "axes", "offset", "clip", "data", "style"],
+      "properties": {
+        "type": { "const": "face_projection" },
+        "space": {
+          "type": "object",
+          "properties": {
+            "type": { "const": "face_plane" }
+          }
+        },
+        "plane": {
+          "enum": ["xy", "xz", "yz", "zmin", "zmax", "xmin", "xmax", "ymin", "ymax"]
+        },
+        "axes": {
+          "type": "array",
+          "items": { "enum": ["x", "y", "z"] },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "offset": { "type": "number" },
+        "clip": { "type": "boolean" },
+        "data": {
+          "type": "object",
+          "required": ["kind", "encoding", "x", "y", "z", "shape", "order"],
+          "properties": {
+            "kind": { "const": "grid2d" },
+            "encoding": { "const": "json-grid" },
+            "order": { "const": "row-major" },
+            "tessellation": { "enum": ["rect", "right1", "right2", "equilateral"] }
+          }
+        },
+        "style": {
+          "type": "object",
+          "properties": {
+            "type": { "enum": ["density_grid"] },
+            "material": { "enum": ["unlit"] },
+            "fill": { "type": "string" },
+            "opacity": { "type": "number" }
           }
         }
       }

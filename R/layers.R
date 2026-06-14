@@ -18,9 +18,7 @@ geom_point3d <- function(mapping = NULL, data = NULL, size = 4, alpha = 1,
   if (length(dots) > 0) {
     stop("Unused arguments in geom_point3d(): ", paste(names(dots), collapse = ", "), call. = FALSE)
   }
-  if (!is.null(mapping) && !inherits(mapping, "ggplot3scene_aes")) {
-    stop("mapping must be created with aes3().", call. = FALSE)
-  }
+  mapping <- normalize_aes3_mapping(mapping)
   if (!is.numeric(size) || length(size) != 1L || !is.finite(size) || size <= 0) {
     stop("size must be a positive numeric scalar.", call. = FALSE)
   }

@@ -1,13 +1,12 @@
 ggplot3 <- function(data = NULL, mapping = aes3()) {
-  if (!is.null(mapping) && !inherits(mapping, "ggplot3scene_aes")) {
-    stop("mapping must be created with aes3().", call. = FALSE)
-  }
+  mapping <- normalize_aes3_mapping(mapping)
   plot <- list(
     data = data,
     mapping = mapping,
     layers = list(),
     coord = coord_3d(),
-    theme = theme_3d_scientific()
+    theme = theme_3d_scientific(),
+    guides = list()
   )
   class(plot) <- c("ggplot3scene_plot", "list")
   plot
@@ -26,6 +25,10 @@ ggplot3 <- function(data = NULL, mapping = aes3()) {
     e1$theme <- merge_theme3d(e1$theme, e2)
     return(e1)
   }
+  if (inherits(e2, "ggplot3scene_guide")) {
+    e1$guides[[length(e1$guides) + 1L]] <- e2
+    return(e1)
+  }
   stop("Cannot add object of class ", paste(class(e2), collapse = "/"), " to a ggplot3scene plot.", call. = FALSE)
 }
 
@@ -39,6 +42,10 @@ coord_3d <- function(projection = c("orthographic", "perspective"),
                      origin_mode = c("fixed", "data_min", "data_center"),
                      axis_limits = list(x = NULL, y = NULL, z = NULL),
                      grid = grid_3d(),
+                     axis = axis_3d(
+                       length_fraction = grid$axis_length_fraction %||% 1,
+                       arrows = grid$axis_arrows %||% FALSE
+                     ),
                      clip = c("none", "grid", "axes", "data", "all"),
                      expand = 0) {
   projection <- match.arg(projection)
@@ -56,6 +63,9 @@ coord_3d <- function(projection = c("orthographic", "perspective"),
   if (!inherits(grid, "ggplot3scene_grid3d")) {
     stop("grid must be created with grid_3d().", call. = FALSE)
   }
+  if (!inherits(axis, "ggplot3scene_axis3d")) {
+    stop("axis must be created with axis_3d().", call. = FALSE)
+  }
   axis_limits <- validate_axis_limits(axis_limits)
   if (!is.numeric(expand) || length(expand) != 1L || !is.finite(expand) || expand < 0) {
     stop("expand must be a non-negative numeric scalar.", call. = FALSE)
@@ -72,11 +82,80 @@ coord_3d <- function(projection = c("orthographic", "perspective"),
     origin_mode = origin_mode,
     axis_limits = axis_limits,
     grid = grid,
+    axis = axis,
     clip = clip,
     expand = expand
   )
   class(coord) <- c("ggplot3scene_coord", "list")
   coord
+}
+
+guide_colorbar_scene3d <- function(aesthetic = "colour", title = NULL,
+                                   domain = c(0, 1),
+                                   palette = c("#2166AC", "#F7F7F7", "#B2182B"),
+                                   materialMode = c("unlit", "lit")) {
+  materialMode <- match.arg(materialMode)
+  if (!is.character(aesthetic) || length(aesthetic) != 1L || !nzchar(aesthetic)) {
+    stop("aesthetic must be a non-empty string.", call. = FALSE)
+  }
+  domain <- check_guide_domain(domain)
+  if (!is.character(palette) || length(palette) == 0L) {
+    stop("palette must be a non-empty character vector.", call. = FALSE)
+  }
+  new_scene3d_guide(
+    type = "colorbar",
+    aesthetic = aesthetic,
+    title = title %||% aesthetic,
+    domain = domain,
+    palette = unname(palette),
+    materialMode = materialMode
+  )
+}
+
+guide_legend_scene3d <- function(aesthetic = "colour", title = NULL,
+                                 labels, values,
+                                 materialMode = c("unlit", "lit")) {
+  materialMode <- match.arg(materialMode)
+  if (!is.character(aesthetic) || length(aesthetic) != 1L || !nzchar(aesthetic)) {
+    stop("aesthetic must be a non-empty string.", call. = FALSE)
+  }
+  if (missing(labels) || missing(values)) {
+    stop("guide_legend_scene3d() requires labels and values.", call. = FALSE)
+  }
+  if (!is.character(labels) || !is.character(values) || length(labels) != length(values) || length(labels) == 0L) {
+    stop("labels and values must be non-empty character vectors with the same length.", call. = FALSE)
+  }
+  new_scene3d_guide(
+    type = "legend",
+    aesthetic = aesthetic,
+    title = title %||% aesthetic,
+    entries = unname(lapply(seq_along(labels), function(i) {
+      list(label = labels[[i]], value = values[[i]])
+    })),
+    materialMode = materialMode
+  )
+}
+
+new_scene3d_guide <- function(...) {
+  out <- list(...)
+  class(out) <- c("ggplot3scene_guide", "list")
+  out
+}
+
+compile_scene3d_guides <- function(guides) {
+  unname(lapply(guides %||% list(), function(guide) {
+    if (!inherits(guide, "ggplot3scene_guide")) {
+      stop("guides must be created with guide_*_scene3d().", call. = FALSE)
+    }
+    strip_classes(guide)
+  }))
+}
+
+check_guide_domain <- function(domain) {
+  if (!is.numeric(domain) || length(domain) != 2L || any(!is.finite(domain)) || domain[[1]] >= domain[[2]]) {
+    stop("domain must be a finite increasing numeric vector of length 2.", call. = FALSE)
+  }
+  unname(as.numeric(domain))
 }
 
 coord_umap3d <- function(origin_mode = "data_min", positive_grid = TRUE,

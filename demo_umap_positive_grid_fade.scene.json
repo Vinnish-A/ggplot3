@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1.0",
-  "sceneId": "scene-20260614214432",
+  "sceneId": "scene-20260614221223",
   "coordinateSystem": {
     "type": "cartesian3d",
     "handedness": "right",
@@ -33,6 +33,7 @@
         "mask": null,
         "shape": [80, 80],
         "order": "row-major",
+        "tessellation": "rect",
         "metadata": {
           "method": "synthetic-gaussian-mixture",
           "computedBy": "R"
@@ -106,8 +107,17 @@
       },
       "axisLengthFraction": 1,
       "axisArrows": false
-    }
+    },
+    "style": {
+      "lengthFraction": 1,
+      "arrows": false,
+      "labels": true,
+      "titles": true
+    },
+    "labelPlacement": "auto",
+    "tickPlacement": "auto"
   },
+  "guides": [],
   "lights": {
     "ambient": {
       "color": "#FFFFFF",

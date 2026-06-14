@@ -17,6 +17,8 @@ as_scene3d <- function(plot) {
       layer$type,
       point_cloud = compile_point_cloud_layer(plot, layer, i, theme),
       surface_grid = compile_surface_grid_layer(layer, i, theme),
+      surface_stat = compile_surface_stat_layer(plot, layer, i, theme),
+      face_projection = compile_face_projection_layer(plot, layer, i, theme),
       abs_annotation = compile_abs_annotation_layer(plot, layer, i, theme),
       stop("Unsupported layer type: ", layer$type, call. = FALSE)
     )
@@ -48,8 +50,12 @@ as_scene3d <- function(plot) {
       x = list(visible = TRUE, title = "x"),
       y = list(visible = TRUE, title = "y"),
       z = list(visible = TRUE, title = "z"),
-      grid = coord_protocol$grid
+      grid = coord_protocol$grid,
+      style = coord_protocol$axis$style,
+      labelPlacement = coord_protocol$axis$labelPlacement,
+      tickPlacement = coord_protocol$axis$tickPlacement
     ),
+    guides = compile_scene3d_guides(plot$guides),
     lights = list(
       ambient = theme$light$ambient,
       key = theme$light$key
@@ -247,6 +253,18 @@ compute_layer_bounds <- function(layer) {
     ))
   }
 
+  if (identical(layer$type, "face_projection")) {
+    data <- layer$data
+    axes <- layer$axes
+    mins <- c(x = 0, y = 0, z = 0)
+    maxs <- c(x = 0, y = 0, z = 0)
+    mins[[axes[[1]]]] <- min(data$x)
+    maxs[[axes[[1]]]] <- max(data$x)
+    mins[[axes[[2]]]] <- min(data$y)
+    maxs[[axes[[2]]]] <- max(data$y)
+    return(list(min = mins, max = maxs))
+  }
+
   NULL
 }
 
@@ -285,6 +303,16 @@ compile_coord_protocol <- function(coord, bounds) {
       majorBreaks = major_breaks,
       axisLengthFraction = coord$grid$axis_length_fraction %||% 1,
       axisArrows = coord$grid$axis_arrows %||% FALSE
+    ),
+    axis = list(
+      style = list(
+        lengthFraction = coord$axis$length_fraction,
+        arrows = coord$axis$arrows,
+        labels = coord$axis$labels,
+        titles = coord$axis$titles
+      ),
+      labelPlacement = coord$axis$label_placement,
+      tickPlacement = coord$axis$tick_placement
     )
   )
 }

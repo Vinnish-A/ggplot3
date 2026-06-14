@@ -83,9 +83,7 @@ geom_abs_label3d <- function(mapping = NULL, data = NULL, route = abs_route(),
   if (length(dots) > 0) {
     stop("Unused arguments in geom_abs_label3d(): ", paste(names(dots), collapse = ", "), call. = FALSE)
   }
-  if (!is.null(mapping) && !inherits(mapping, "ggplot3scene_aes")) {
-    stop("mapping must be created with aes3().", call. = FALSE)
-  }
+  mapping <- normalize_aes3_mapping(mapping)
   if (!inherits(route, "ggplot3scene_abs_route")) {
     stop("route must be created with abs_route().", call. = FALSE)
   }

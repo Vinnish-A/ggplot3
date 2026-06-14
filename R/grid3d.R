@@ -1,4 +1,7 @@
-grid2d <- function(x, y, z, alpha = NULL, mask = NULL, name = NULL, metadata = list()) {
+grid2d <- function(x, y, z, alpha = NULL, mask = NULL, name = NULL,
+                   metadata = list(),
+                   tessellation = c("rect", "right1", "right2", "equilateral")) {
+  tessellation <- match.arg(tessellation)
   if (!is.numeric(x) || length(x) == 0L || any(!is.finite(x))) {
     stop("x must be a non-empty finite numeric vector.", call. = FALSE)
   }
@@ -37,9 +40,96 @@ grid2d <- function(x, y, z, alpha = NULL, mask = NULL, name = NULL, metadata = l
     mask = mask,
     shape = expected,
     name = name,
-    metadata = metadata
+    metadata = metadata,
+    tessellation = tessellation
   )
   class(out) <- c("ggplot3scene_grid2d", "list")
+  out
+}
+
+surface_grid <- function(x, y, z, alpha = NULL, mask = NULL, name = NULL,
+                         metadata = list(),
+                         tessellation = c("rect", "right1", "right2", "equilateral")) {
+  grid2d(
+    x = x,
+    y = y,
+    z = z,
+    alpha = alpha,
+    mask = mask,
+    name = name,
+    metadata = metadata,
+    tessellation = tessellation
+  )
+}
+
+surface_mesh <- function(vertices, faces, normals = NULL, colors = NULL,
+                         name = NULL, metadata = list()) {
+  if (!is.matrix(vertices) || !is.numeric(vertices) || ncol(vertices) != 3L || nrow(vertices) == 0L) {
+    stop("vertices must be a numeric matrix with 3 columns.", call. = FALSE)
+  }
+  if (!is.matrix(faces) || !is.numeric(faces) || ncol(faces) != 3L || nrow(faces) == 0L) {
+    stop("faces must be a numeric matrix with 3 columns.", call. = FALSE)
+  }
+  if (any(!is.finite(vertices)) || any(!is.finite(faces))) {
+    stop("vertices and faces must contain only finite values.", call. = FALSE)
+  }
+  if (!is.null(normals) && (!is.matrix(normals) || !is.numeric(normals) || !identical(dim(normals), dim(vertices)))) {
+    stop("normals must be NULL or a numeric matrix matching vertices.", call. = FALSE)
+  }
+  if (!is.null(colors) && length(colors) != nrow(vertices)) {
+    stop("colors must be NULL or have one entry per vertex.", call. = FALSE)
+  }
+  if (!is.list(metadata)) {
+    stop("metadata must be a list.", call. = FALSE)
+  }
+
+  out <- list(
+    vertices = unname(vertices),
+    faces = unname(matrix(as.integer(faces), ncol = 3L)),
+    normals = if (is.null(normals)) NULL else unname(normals),
+    colors = if (is.null(colors)) NULL else unname(as.character(colors)),
+    name = name,
+    metadata = metadata
+  )
+  class(out) <- c("ggplot3scene_surface_mesh", "list")
+  out
+}
+
+contour_stack <- function(contours, levels = NULL, name = NULL, metadata = list()) {
+  if (!is.list(contours)) {
+    stop("contours must be a list of contour polylines.", call. = FALSE)
+  }
+  if (!is.null(levels) && (!is.numeric(levels) || any(!is.finite(levels)))) {
+    stop("levels must be NULL or a finite numeric vector.", call. = FALSE)
+  }
+  if (!is.list(metadata)) {
+    stop("metadata must be a list.", call. = FALSE)
+  }
+
+  out <- list(
+    contours = strip_classes(contours),
+    levels = if (is.null(levels)) NULL else unname(as.numeric(levels)),
+    name = name,
+    metadata = metadata
+  )
+  class(out) <- c("ggplot3scene_contour_stack", "list")
+  out
+}
+
+ridgeline_stack <- function(profiles, name = NULL, metadata = list()) {
+  if (!is.list(profiles)) {
+    stop("profiles must be a list of ridgeline profiles.", call. = FALSE)
+  }
+  if (!is.list(metadata)) {
+    stop("metadata must be a list.", call. = FALSE)
+  }
+
+  out <- list(
+    profiles = strip_classes(profiles),
+    name = name,
+    metadata = metadata
+  )
+  class(out) <- c("ggplot3scene_ridgeline_stack", "list")
   out
 }
 
@@ -58,6 +148,7 @@ compile_grid2d_data <- function(grid) {
     mask = if (is.null(grid$mask)) NULL else unname(as.logical(as.vector(t(grid$mask)))),
     shape = unname(as.integer(grid$shape)),
     order = "row-major",
+    tessellation = grid$tessellation %||% "rect",
     metadata = strip_classes(grid$metadata %||% list())
   )
 }
@@ -129,6 +220,40 @@ grid_3d <- function(visible = TRUE, planes = c("xy"),
     axis_arrows = axis_arrows
   )
   class(out) <- c("ggplot3scene_grid3d", "list")
+  out
+}
+
+axis_3d <- function(length_fraction = 1,
+                    arrows = FALSE,
+                    labels = TRUE,
+                    titles = TRUE,
+                    label_placement = c("auto", "outside", "inside", "none"),
+                    tick_placement = c("auto", "outside", "inside", "none")) {
+  label_placement <- match.arg(label_placement)
+  tick_placement <- match.arg(tick_placement)
+  if (!is.numeric(length_fraction) || length(length_fraction) != 1L ||
+      !is.finite(length_fraction) || length_fraction <= 0 || length_fraction > 1) {
+    stop("length_fraction must be a numeric scalar in (0, 1].", call. = FALSE)
+  }
+  if (!is.logical(arrows) || length(arrows) != 1L || is.na(arrows)) {
+    stop("arrows must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (!is.logical(labels) || length(labels) != 1L || is.na(labels)) {
+    stop("labels must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (!is.logical(titles) || length(titles) != 1L || is.na(titles)) {
+    stop("titles must be TRUE or FALSE.", call. = FALSE)
+  }
+
+  out <- list(
+    length_fraction = length_fraction,
+    arrows = arrows,
+    labels = labels,
+    titles = titles,
+    label_placement = label_placement,
+    tick_placement = tick_placement
+  )
+  class(out) <- c("ggplot3scene_axis3d", "list")
   out
 }
 
